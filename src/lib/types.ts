@@ -348,6 +348,8 @@ export interface DashboardMetrics {
   tasks: { overdue: number; due_today: number };
   orders: {
     open: number;
+    created_in_range: number;
+    amount_in_range: number;
     pending_purchase: number;
     pending_reception: number;
     pending_preparation: number;

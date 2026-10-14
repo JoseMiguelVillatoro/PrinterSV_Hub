@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardCheck, Copy, FileDown, MessageSquarePlus, Pencil, RefreshCcw, Send } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, Copy, Eye, FileDown, MessageSquarePlus, Pencil, RefreshCcw, Send } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { TaskFormModal } from '@/components/forms';
@@ -83,18 +83,36 @@ export function QuoteDetailPage() {
   });
 
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  async function makePdf() {
+    if (!data || !settings) throw new Error('Cargando datos…');
+    const { buildQuotePdf } = await import('@/lib/pdf');
+    return buildQuotePdf({ ...data, settings, ownerName: data.quote.owner_name });
+  }
   async function downloadPdf() {
-    if (!data || !settings) return;
     setPdfLoading(true);
     try {
-      const { buildQuotePdf } = await import('@/lib/pdf');
-      const doc = await buildQuotePdf({ ...data, settings, ownerName: data.quote.owner_name });
-      doc.save(`${data.quote.number}.pdf`);
+      (await makePdf()).save(`${data!.quote.number}.pdf`);
     } catch (e) {
       toast.error(e);
     } finally {
       setPdfLoading(false);
     }
+  }
+  async function previewPdf() {
+    setPdfLoading(true);
+    try {
+      const blob = (await makePdf()).output('blob');
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
   }
 
   if (isLoading) return <Spinner />;
@@ -126,6 +144,9 @@ export function QuoteDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" icon={<Eye className="h-4 w-4" />} loading={pdfLoading} onClick={previewPdf}>
+            Vista previa
+          </Button>
           <Button variant="secondary" icon={<FileDown className="h-4 w-4" />} loading={pdfLoading} onClick={downloadPdf}>
             PDF
           </Button>
@@ -380,6 +401,19 @@ export function QuoteDetailPage() {
         </div>
       </div>
 
+      <Modal
+        open={Boolean(previewUrl)}
+        onClose={closePreview}
+        wide
+        title={`Vista previa · ${q.number}`}
+        footer={
+          <Button icon={<FileDown className="h-4 w-4" />} onClick={() => void downloadPdf()}>
+            Descargar
+          </Button>
+        }
+      >
+        {previewUrl && <iframe title="Vista previa del PDF" src={previewUrl} className="h-[70vh] w-full rounded-lg border border-slate-200" />}
+      </Modal>
       <StatusModal open={statusModal} onClose={() => setStatusModal(false)} quote={q} options={transitions} onDone={invalidate} />
       <FollowupModal open={followModal} onClose={() => setFollowModal(false)} quote={q} onDone={invalidate} />
       <CommentModal open={commentModal} onClose={() => setCommentModal(false)} quoteId={q.id} onDone={invalidate} />

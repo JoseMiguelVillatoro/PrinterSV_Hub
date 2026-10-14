@@ -175,6 +175,10 @@ begin
     ),
     'orders', jsonb_build_object(
       'open',                (select count(*) from ords where status = 'abierto'),
+      'created_in_range',    (select count(*) from ords where status <> 'cancelado'
+                               and (created_at at time zone 'America/El_Salvador')::date between v_from and v_to),
+      'amount_in_range',     (select coalesce(sum(total), 0) from ords where status <> 'cancelado'
+                               and (created_at at time zone 'America/El_Salvador')::date between v_from and v_to),
       'pending_purchase',    (select count(*) from ords where status = 'abierto' and requires_purchase and purchase_status in ('pendiente', 'solicitada')),
       'pending_reception',   (select count(*) from ords where status = 'abierto' and requires_purchase and purchase_status = 'comprada' and reception_status <> 'recibida'),
       'pending_preparation', (select count(*) from ords where status = 'abierto' and preparation_status <> 'lista'),

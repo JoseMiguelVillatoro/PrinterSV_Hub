@@ -36,8 +36,11 @@ export function LoginPage() {
         <div className="absolute -bottom-24 right-0 h-80 w-80 rounded-full bg-accent-500/20 blur-3xl" />
         <div className="relative flex h-full flex-col justify-between p-12">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 font-bold text-white">P</div>
-            <span className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-400">Business Hub</span>
+            <img src="/logo.png" alt="" className="h-14 w-14 object-contain" />
+            <div>
+              <p className="text-2xl font-bold text-white">Printer</p>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent-400">Business Hub</p>
+            </div>
           </div>
           <div>
             <h1 className="max-w-md text-3xl font-semibold leading-tight text-white">
@@ -53,6 +56,7 @@ export function LoginPage() {
 
       <div className="flex flex-1 items-center justify-center px-6 py-12">
         <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5">
+          <img src="/logo.png" alt="Printer" className="h-16 w-16 object-contain lg:hidden" />
           <div>
             <h2 className="text-2xl font-semibold text-navy-900">Iniciar sesión</h2>
             <p className="mt-1 text-sm text-slate-500">Usá las credenciales que te asignó el administrador.</p>

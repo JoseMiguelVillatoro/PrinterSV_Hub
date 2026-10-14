@@ -8,46 +8,52 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Plus,
   Settings,
   Truck,
   Users,
   X,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/format';
+import { GlobalSearch } from './GlobalSearch';
 
 interface NavItem {
   to: string;
   label: string;
+  short?: string;
   icon: ReactNode;
   show?: (a: ReturnType<typeof useAuth>) => boolean;
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { to: '/clientes', label: 'Clientes', icon: <Users className="h-4 w-4" /> },
-  { to: '/agenda', label: 'Agenda y tareas', icon: <CalendarDays className="h-4 w-4" /> },
-  { to: '/cotizaciones', label: 'Cotizaciones', icon: <FileText className="h-4 w-4" /> },
-  { to: '/pedidos', label: 'Pedidos y entregas', icon: <ClipboardList className="h-4 w-4" /> },
-  { to: '/productos', label: 'Productos y servicios', icon: <Boxes className="h-4 w-4" /> },
-  { to: '/proveedores', label: 'Proveedores', icon: <Truck className="h-4 w-4" />, show: (a) => a.canSeeCosts },
-  { to: '/reportes', label: 'Reportes', icon: <BarChart3 className="h-4 w-4" /> },
-  { to: '/configuracion', label: 'Configuración', icon: <Settings className="h-4 w-4" />, show: (a) => a.isAdmin },
+  { to: '/', label: 'Dashboard', short: 'Inicio', icon: <LayoutDashboard className="h-[18px] w-[18px]" /> },
+  { to: '/clientes', label: 'Clientes', icon: <Users className="h-[18px] w-[18px]" /> },
+  { to: '/agenda', label: 'Agenda y visitas', short: 'Agenda', icon: <CalendarDays className="h-[18px] w-[18px]" /> },
+  { to: '/cotizaciones', label: 'Cotizaciones', short: 'Cotizar', icon: <FileText className="h-[18px] w-[18px]" /> },
+  { to: '/pedidos', label: 'Pedidos y compras', short: 'Pedidos', icon: <ClipboardList className="h-[18px] w-[18px]" /> },
+  { to: '/productos', label: 'Productos y servicios', icon: <Boxes className="h-[18px] w-[18px]" /> },
+  { to: '/proveedores', label: 'Proveedores', icon: <Truck className="h-[18px] w-[18px]" />, show: (a) => a.canSeeCosts },
+  { to: '/reportes', label: 'Reportes', icon: <BarChart3 className="h-[18px] w-[18px]" /> },
+  { to: '/configuracion', label: 'Configuración', icon: <Settings className="h-[18px] w-[18px]" />, show: (a) => a.isAdmin },
 ];
 
-function Brand() {
+export function initials(name: string | null | undefined): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '··';
+}
+
+export function Brand({ compact }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 px-5 py-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 text-sm font-bold text-white shadow-lg shadow-brand-500/30">
-        P
+    <Link to="/" className="flex items-center gap-2.5">
+      <img src="/logo.png" alt="Printer Computers & Systems" className={compact ? 'h-8 w-8 object-contain' : 'h-11 w-11 object-contain drop-shadow'} />
+      <div className="leading-none">
+        <p className={clsx('font-bold tracking-tight', compact ? 'text-base text-navy-900' : 'text-2xl text-white')}>Printer</p>
+        <p className={clsx('mt-0.5 font-medium', compact ? 'text-[10px] text-slate-500' : 'text-[11px] text-slate-300')}>Computers &amp; Systems</p>
       </div>
-      <div className="leading-tight">
-        <p className="text-sm font-semibold text-white">Printer</p>
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent-400">Business Hub</p>
-      </div>
-    </div>
+    </Link>
   );
 }
 
@@ -55,8 +61,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const auth = useAuth();
   return (
     <div className="flex h-full flex-col bg-navy-900">
-      <Brand />
-      <nav className="flex-1 space-y-0.5 px-3">
+      <div className="px-5 pb-6 pt-6">
+        <Brand />
+      </div>
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
         {NAV.filter((n) => !n.show || n.show(auth)).map((n) => (
           <NavLink
             key={n.to}
@@ -65,8 +73,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
-                isActive ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20' : 'text-slate-300 hover:bg-navy-800 hover:text-white',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition',
+                isActive ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/25' : 'text-slate-300 hover:bg-white/5 hover:text-white',
               )
             }
           >
@@ -75,12 +83,19 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-navy-800 p-4">
-        <p className="truncate text-sm font-medium text-white">{auth.profile?.full_name || auth.session?.user.email}</p>
-        <p className="truncate text-xs text-slate-400">{auth.roles.map((r) => ROLE_LABEL[r]).join(' · ') || 'Sin rol asignado'}</p>
+      <div className="m-3 rounded-xl bg-white/5 p-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-sm font-semibold text-white">
+            {initials(auth.profile?.full_name)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-white">{auth.profile?.full_name || auth.session?.user.email}</p>
+            <p className="truncate text-xs text-slate-400">{auth.roles.map((r) => ROLE_LABEL[r]).join(' · ')}</p>
+          </div>
+        </div>
         <button
           onClick={() => void auth.signOut()}
-          className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-navy-800 hover:text-white"
+          className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-4 w-4" /> Cerrar sesión
         </button>
@@ -89,22 +104,26 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+const MOBILE_TABS = ['/', '/clientes', '/cotizaciones', '/pedidos'];
+
 export function Layout() {
+  const auth = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const current = NAV.find((n) => (n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)));
+  const navigate = useNavigate();
+  const isActive = (to: string) => (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to));
 
   return (
-    <div className="min-h-screen">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 lg:block">
+    <div className="min-h-screen bg-slate-100/70">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
         <Sidebar />
       </aside>
 
       {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-navy-950/50" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 left-0 w-72 shadow-xl">
-            <button onClick={() => setOpen(false)} className="absolute right-3 top-5 z-10 text-slate-300" aria-label="Cerrar menú">
+            <button onClick={() => setOpen(false)} className="absolute right-3 top-7 z-10 text-slate-300" aria-label="Cerrar menú">
               <X className="h-5 w-5" />
             </button>
             <Sidebar onNavigate={() => setOpen(false)} />
@@ -113,16 +132,58 @@ export function Layout() {
       )}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur lg:hidden">
-          <button onClick={() => setOpen(true)} className="rounded-md p-1.5 text-slate-600 hover:bg-slate-100" aria-label="Abrir menú">
-            <Menu className="h-5 w-5" />
-          </button>
-          <span className="text-sm font-semibold text-navy-900">{current?.label ?? 'Printer Business Hub'}</span>
+        {/* Barra superior */}
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="lg:hidden">
+              <Brand compact />
+            </div>
+            <div className="hidden flex-1 md:block">
+              <GlobalSearch />
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              {auth.canManageQuotes && (
+                <button
+                  onClick={() => navigate('/cotizaciones/nueva')}
+                  className="hidden h-9 items-center gap-2 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white shadow-sm hover:bg-brand-600 sm:inline-flex"
+                >
+                  <Plus className="h-4 w-4" /> Nueva cotización
+                </button>
+              )}
+              <span
+                title={auth.profile?.full_name ?? ''}
+                className="hidden h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-sm font-semibold text-white lg:flex"
+              >
+                {initials(auth.profile?.full_name)}
+              </span>
+              <button onClick={() => setOpen(true)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Abrir menú">
+                <Menu className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div className="px-4 pb-3 md:hidden">
+            <GlobalSearch />
+          </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
+        <main className="mx-auto max-w-[1400px] px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
           <Outlet />
         </main>
       </div>
+
+      {/* Navegación inferior en móvil */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+        {NAV.filter((n) => MOBILE_TABS.includes(n.to)).map((n) => (
+          <Link key={n.to} to={n.to} className={clsx('flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium', isActive(n.to) ? 'text-brand-600' : 'text-slate-500')}>
+            {n.icon}
+            {n.short ?? n.label}
+          </Link>
+        ))}
+        <button onClick={() => setOpen(true)} className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-slate-500">
+          <Menu className="h-[18px] w-[18px]" />
+          Más
+        </button>
+      </nav>
     </div>
   );
 }

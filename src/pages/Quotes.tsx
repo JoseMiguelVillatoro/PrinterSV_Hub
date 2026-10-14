@@ -156,6 +156,7 @@ export function QuotesPage() {
                 <Th>Cliente</Th>
                 <Th className="hidden md:table-cell">Fecha</Th>
                 <Th className="hidden lg:table-cell">Próxima acción</Th>
+                <Th className="hidden xl:table-cell">Responsable</Th>
                 <Th>Estado</Th>
                 <Th className="text-right">Total</Th>
               </tr>
@@ -188,6 +189,7 @@ export function QuotesPage() {
                       '—'
                     )}
                   </Td>
+                  <Td className="hidden xl:table-cell">{q.owner_name ?? '—'}</Td>
                   <Td>
                     <Badge tone={QUOTE_STATUS_TONE[q.status]}>{QUOTE_STATUS_LABEL[q.status]}</Badge>
                     {q.order_number && <p className="mt-1 text-xs text-slate-500">{q.order_number}</p>}
@@ -198,7 +200,7 @@ export function QuotesPage() {
             </tbody>
             <tfoot>
               <tr>
-                <Td colSpan={5} className="text-right text-xs font-medium uppercase text-slate-500">
+                <Td colSpan={6} className="text-right text-xs font-medium uppercase text-slate-500">
                   Total filtrado
                 </Td>
                 <Td className="whitespace-nowrap text-right font-semibold text-navy-900">{money(rows.reduce((a, q) => a + Number(q.total), 0))}</Td>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Card, Checkbox, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { useProducts, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
@@ -223,7 +224,9 @@ export function ProductsPage() {
     enabled: auth.canSeeCosts,
     queryFn: () => unwrap(supabase.from('product_costs').select('*')) as Promise<ProductCost[]>,
   });
-  const [search, setSearch] = useState('');
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(params.get('q') ?? '');
+  useEffect(() => setSearch(params.get('q') ?? ''), [params]);
   const [category, setCategory] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<{ open: boolean; product: Product | null }>({ open: false, product: null });

@@ -7,6 +7,7 @@ const NAVY: [number, number, number] = [11, 27, 63];
 const BLUE: [number, number, number] = [29, 111, 232];
 const CYAN: [number, number, number] = [6, 182, 212];
 const GRAY: [number, number, number] = [100, 116, 139];
+const DEFAULT_LOGO = '/logo.png';
 
 async function loadImage(url: string): Promise<{ data: string; w: number; h: number } | null> {
   try {
@@ -54,19 +55,25 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
   doc.setFillColor(...CYAN);
   doc.rect(0, 6, W, 2, 'F');
 
-  // Logo o nombre
+  // Logo (configurado o el de la marca incluido en la app) + nombre
   let y = 36;
-  const logo = settings.logo_url ? await loadImage(settings.logo_url) : null;
-  if (logo) {
-    const h = 44;
-    const w = Math.min((logo.w / logo.h) * h, 180);
-    const fmt = logo.data.includes('image/png') ? 'PNG' : 'JPEG';
-    doc.addImage(logo.data, fmt, M, y - 6, w, h);
+  const customLogo = settings.logo_url ? await loadImage(settings.logo_url) : null;
+  const logo = customLogo ?? (await loadImage(DEFAULT_LOGO));
+  if (customLogo) {
+    const h = 48;
+    const w = Math.min((customLogo.w / customLogo.h) * h, 190);
+    doc.addImage(customLogo.data, customLogo.data.includes('image/png') ? 'PNG' : 'JPEG', M, y - 10, w, h);
   } else {
+    if (logo) doc.addImage(logo.data, 'PNG', M, y - 12, (logo.w / logo.h) * 50, 50);
+    const tx = M + (logo ? (logo.w / logo.h) * 50 + 10 : 0);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
+    doc.setFontSize(24);
     doc.setTextColor(...NAVY);
-    doc.text(settings.company_name, M, y + 14);
+    doc.text(settings.company_name.split(' ')[0] || 'Printer', tx, y + 16);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...GRAY);
+    doc.text(settings.company_name.split(' ').slice(1).join(' ') || '', tx + 1, y + 30);
   }
 
   // Datos de la empresa (solo los que estén configurados — no se inventan)
@@ -79,16 +86,16 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     settings.address,
     [settings.phone, settings.email, settings.website].filter(Boolean).join(' · '),
   ].filter((l): l is string => Boolean(l && l.trim()));
-  doc.text(companyLines, M, y + 54);
+  doc.text(companyLines, M, y + 56);
 
   // Bloque derecho: título y número
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.setTextColor(...BLUE);
-  doc.text('COTIZACIÓN', W - M, y + 14, { align: 'right' });
-  doc.setFontSize(11);
   doc.setTextColor(...NAVY);
-  doc.text(quote.number, W - M, y + 32, { align: 'right' });
+  doc.text('COTIZACIÓN', W - M, y + 12, { align: 'right' });
+  doc.setFontSize(11);
+  doc.setTextColor(...BLUE);
+  doc.text(`No. ${quote.number}`, W - M, y + 30, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...GRAY);
@@ -206,7 +213,10 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     ['Condiciones comerciales', quote.terms ?? settings.default_quote_terms],
   ].filter(([, v]) => v) as [string, string][];
   for (const [title, text] of blocks) {
-    const lines = doc.splitTextToSize(text, W - 2 * M);
+    const bullets = title === 'Condiciones comerciales'
+      ? text.split(/\n+/).map((l) => l.trim()).filter(Boolean).map((l) => (l.startsWith('-') || l.startsWith('•') ? `• ${l.replace(/^[-•]\s*/, '')}` : `• ${l}`)).join('\n')
+      : text;
+    const lines = doc.splitTextToSize(bullets, W - 2 * M);
     if (ny + 20 + lines.length * 11 > doc.internal.pageSize.getHeight() - 50) {
       doc.addPage();
       ny = 50;
@@ -232,6 +242,11 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     doc.setFontSize(7.5);
     doc.setTextColor(...GRAY);
     doc.text(settings.quote_footer ?? 'Este documento es una cotización comercial y no constituye una factura fiscal.', M, H - 24);
+    const contactLine = [settings.phone, settings.email, settings.website].filter(Boolean).join('   ·   ');
+    if (contactLine) {
+      doc.setTextColor(...BLUE);
+      doc.text(contactLine, M, H - 13);
+    }
     doc.text(`${quote.number} · Página ${p} de ${pages}`, W - M, H - 24, { align: 'right' });
   }
 

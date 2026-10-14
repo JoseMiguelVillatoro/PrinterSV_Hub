@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Download, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Input, PageHeader, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Input, PageHeader, Spinner, Table, Td, Th } from '@/components/ui';
 import { downloadCSV } from '@/lib/csv';
 import {
   DELIVERY_LABEL,
@@ -19,6 +19,24 @@ import { supabase, unwrap } from '@/lib/supabase';
 import type { OrderView } from '@/lib/types';
 
 type Filter = '' | 'compra' | 'recepcion' | 'preparacion' | 'entrega' | 'cerrados';
+const FILTERS: [Filter, string][] = [
+  ['', 'Abiertos'],
+  ['compra', 'Por comprar'],
+  ['recepcion', 'Por recibir'],
+  ['preparacion', 'En preparación'],
+  ['entrega', 'Por entregar'],
+  ['cerrados', 'Cerrados / cancelados'],
+];
+
+function matches(o: OrderView, filter: Filter): boolean {
+  const open = o.status === 'abierto';
+  if (filter === '') return open;
+  if (filter === 'cerrados') return !open;
+  if (filter === 'compra') return open && o.requires_purchase && ['pendiente', 'solicitada'].includes(o.purchase_status);
+  if (filter === 'recepcion') return open && o.requires_purchase && o.purchase_status === 'comprada' && o.reception_status !== 'recibida';
+  if (filter === 'preparacion') return open && o.preparation_status !== 'lista';
+  return open && o.delivery_status !== 'entregada';
+}
 
 export function OrdersPage() {
   const navigate = useNavigate();
@@ -33,24 +51,10 @@ export function OrdersPage() {
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return (data ?? []).filter((o) => {
-      const open = o.status === 'abierto';
-      const okFilter =
-        filter === ''
-          ? open
-          : filter === 'cerrados'
-            ? !open
-            : filter === 'compra'
-              ? open && o.requires_purchase && ['pendiente', 'solicitada'].includes(o.purchase_status)
-              : filter === 'recepcion'
-                ? open && o.requires_purchase && o.purchase_status === 'comprada' && o.reception_status !== 'recibida'
-                : filter === 'preparacion'
-                  ? open && o.preparation_status !== 'lista'
-                  : open && o.delivery_status !== 'entregada';
-      return okFilter && (!s || [o.number, o.client_name, o.quote_number].some((v) => v?.toLowerCase().includes(s)));
-    });
+    return (data ?? []).filter((o) => matches(o, filter) && (!s || [o.number, o.client_name, o.quote_number].some((v) => v?.toLowerCase().includes(s))));
   }, [data, filter, search]);
 
+  const count = (f: Filter) => (data ?? []).filter((o) => matches(o, f)).length;
   const setFilter = (f: Filter) => {
     const p = new URLSearchParams(params);
     if (f) p.set('pendiente', f);
@@ -95,20 +99,23 @@ export function OrdersPage() {
           </Button>
         }
       />
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setFilter(k)}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${filter === k ? 'bg-navy-900 text-white ring-navy-900' : 'bg-white text-slate-600 ring-slate-200'}`}
+          >
+            {label} · {count(k)}
+          </button>
+        ))}
+      </div>
       <Card>
-        <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_240px]">
+        <div className="mb-4">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <Input className="pl-9" placeholder="Pedido, cliente, cotización…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <Select value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-            <option value="">Abiertos</option>
-            <option value="compra">Pendientes de compra</option>
-            <option value="recepcion">Pendientes de recepción</option>
-            <option value="preparacion">Pendientes de preparación</option>
-            <option value="entrega">Pendientes de entrega</option>
-            <option value="cerrados">Cerrados / cancelados</option>
-          </Select>
         </div>
         <ErrorBox error={error} />
         {isLoading ? (

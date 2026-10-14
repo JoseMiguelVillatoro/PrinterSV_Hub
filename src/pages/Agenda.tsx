@@ -4,6 +4,7 @@ import { CalendarPlus, Check, ListPlus, MapPin } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TaskFormModal, VisitFormModal } from '@/components/forms';
+import { MonthCalendar } from '@/components/MonthCalendar';
 import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, PageHeader, Select, Spinner } from '@/components/ui';
 import { profileName, useProfiles } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
@@ -12,14 +13,16 @@ import { PRIORITY_LABEL, VISIT_STATUS_LABEL, dateOnly, dateTime, stageTone, toda
 import { supabase, unwrap } from '@/lib/supabase';
 import type { Task, Visit } from '@/lib/types';
 
-type Tab = 'visitas' | 'tareas';
+type Tab = 'calendario' | 'visitas' | 'tareas';
+const TAB_LABEL: Record<Tab, string> = { calendario: 'Calendario', visitas: 'Visitas', tareas: 'Tareas' };
 
 export function AgendaPage() {
   const auth = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
   const { data: profiles } = useProfiles();
-  const [tab, setTab] = useState<Tab>('visitas');
+  const [tab, setTab] = useState<Tab>('calendario');
+  const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [owner, setOwner] = useState<string>('');
   const [visitScope, setVisitScope] = useState<'proximas' | 'pasadas'>('proximas');
   const [taskScope, setTaskScope] = useState<'pendientes' | 'atrasadas' | 'todas'>('pendientes');
@@ -72,6 +75,32 @@ export function AgendaPage() {
       ),
     [tasks.data, owner, taskScope, today],
   );
+  const upcoming = useMemo(() => {
+    const vs = (visits.data ?? [])
+      .filter((v) => v.status === 'programada' && toLocalInput(v.scheduled_at).slice(0, 10) >= today && (!owner || v.owner_id === owner))
+      .map((v) => ({
+        key: `v${v.id}`,
+        sort: toLocalInput(v.scheduled_at),
+        when: `${dateOnly(toLocalInput(v.scheduled_at).slice(0, 10))} · ${toLocalInput(v.scheduled_at).slice(11)}`,
+        title: v.title,
+        sub: `Visita · ${v.clients?.name ?? ''}`,
+        tone: 'border-l-brand-500',
+        onClick: () => auth.canManageVisits && setVisitModal({ open: true, visit: v }),
+      }));
+    const ts = (tasks.data ?? [])
+      .filter((t) => t.status === 'pendiente' && (!owner || t.owner_id === owner))
+      .map((t) => ({
+        key: `t${t.id}`,
+        sort: `${t.due_date}T23:59`,
+        when: `${t.due_date < today ? 'Atrasada · ' : ''}${dateOnly(t.due_date)}`,
+        title: t.title,
+        sub: `Tarea${t.clients?.name ? ` · ${t.clients.name}` : ''}`,
+        tone: t.due_date < today ? 'border-l-red-500' : 'border-l-amber-500',
+        onClick: () => setTaskModal({ open: true, task: t }),
+      }));
+    return [...vs, ...ts].sort((a, b) => a.sort.localeCompare(b.sort)).slice(0, 8);
+  }, [visits.data, tasks.data, owner, today, auth.canManageVisits]);
+
   const lateCount = (tasks.data ?? []).filter((t) => t.status === 'pendiente' && t.due_date < today).length;
 
   return (
@@ -95,19 +124,19 @@ export function AgendaPage() {
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-          {(['visitas', 'tareas'] as Tab[]).map((t) => (
+          {(['calendario', 'visitas', 'tareas'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={clsx('rounded-md px-4 py-1.5 text-sm font-medium capitalize', tab === t ? 'bg-navy-900 text-white' : 'text-slate-600 hover:bg-slate-50')}
             >
-              {t}
+              {TAB_LABEL[t]}
               {t === 'tareas' && lateCount > 0 && <span className="ml-2 rounded-full bg-red-500 px-1.5 text-xs text-white">{lateCount}</span>}
             </button>
           ))}
         </div>
         <div className="flex gap-2">
-          {tab === 'visitas' ? (
+          {tab === 'calendario' ? null : tab === 'visitas' ? (
             <Select value={visitScope} onChange={(e) => setVisitScope(e.target.value as typeof visitScope)} className="w-40">
               <option value="proximas">Próximas</option>
               <option value="pasadas">Historial</option>
@@ -130,7 +159,38 @@ export function AgendaPage() {
         </div>
       </div>
 
-      {tab === 'visitas' ? (
+      {tab === 'calendario' ? (
+        <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+          <Card>
+            <ErrorBox error={visits.error} />
+            <MonthCalendar
+              month={month}
+              onMonth={setMonth}
+              visits={(visits.data ?? []).filter((v) => !owner || v.owner_id === owner)}
+              tasks={(tasks.data ?? []).filter((t) => !owner || t.owner_id === owner)}
+              onVisit={(v) => (auth.canManageVisits ? setVisitModal({ open: true, visit: v }) : undefined)}
+              onTask={(t) => setTaskModal({ open: true, task: t })}
+            />
+          </Card>
+          <Card title="Próximas actividades">
+            {upcoming.length === 0 ? (
+              <p className="text-sm text-slate-500">Nada programado.</p>
+            ) : (
+              <ol className="space-y-3">
+                {upcoming.map((a) => (
+                  <li key={a.key} className={clsx('rounded-lg border-l-4 bg-slate-50 px-3 py-2', a.tone)}>
+                    <button className="w-full text-left" onClick={a.onClick}>
+                      <p className="text-xs font-medium text-slate-500">{a.when}</p>
+                      <p className="text-sm font-semibold text-slate-800">{a.title}</p>
+                      <p className="text-xs text-slate-500">{a.sub}</p>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
+        </div>
+      ) : tab === 'visitas' ? (
         <Card>
           <ErrorBox error={visits.error} />
           {visits.isLoading ? (

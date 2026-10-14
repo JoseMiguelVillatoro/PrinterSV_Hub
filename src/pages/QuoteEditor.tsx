@@ -155,6 +155,7 @@ export function QuoteEditorPage() {
     }
   }, [id, existing.data, settings, header, params, auth.session]);
 
+  const productImg = useMemo(() => new Map((products ?? []).filter((p) => p.image_url).map((p) => [p.id, p.image_url as string])), [products]);
   const costMap = useMemo(() => new Map((costs.data ?? []).map((c) => [c.product_id, c.unit_cost])), [costs.data]);
   const totals = useMemo(() => calcQuote(lines, adjs, header?.tax_rate ?? 0), [lines, adjs, header?.tax_rate]);
   const marginInfo = useMemo(() => {
@@ -267,7 +268,7 @@ export function QuoteEditorPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="space-y-6">
           <Card title="Datos generales">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -344,7 +345,83 @@ export function QuoteEditorPage() {
                 Agregá productos del catálogo o una línea personalizada (no se guarda en el catálogo).
               </p>
             ) : (
-              <div className="space-y-3">
+              <>
+              {/* Escritorio: tabla editable */}
+              <div className="-mx-5 hidden overflow-x-auto md:block">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-y border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <th className="w-8 py-2 pl-5">#</th>
+                      <th className="w-12 py-2">Img.</th>
+                      <th className="py-2 pr-2">Descripción</th>
+                      <th className="w-20 py-2 pr-2">Cant.</th>
+                      <th className="w-28 py-2 pr-2">Precio unit.</th>
+                      <th className="w-20 py-2 pr-2">Desc. %</th>
+                      {auth.canSeeCosts && <th className="w-24 py-2 pr-2">Costo</th>}
+                      <th className="w-12 py-2 text-center">IVA</th>
+                      <th className="w-28 py-2 pr-2 text-right">Subtotal</th>
+                      <th className="w-20 py-2 pr-5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {lines.map((l, idx) => {
+                      const r = calcLine(l);
+                      const img = l.product_id ? productImg.get(l.product_id) : null;
+                      return (
+                        <tr key={l.key} className="align-top">
+                          <td className="py-3 pl-5 text-slate-500">{idx + 1}</td>
+                          <td className="py-2">
+                            {img ? (
+                              <img src={img} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-slate-200" />
+                            ) : (
+                              <span className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-[9px] font-semibold text-slate-400">
+                                {l.product_id ? (l.kind === 'servicio' ? 'SRV' : 'PRD') : <PenLine className="h-3.5 w-3.5" />}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-2">
+                            <Textarea rows={2} aria-label="Descripción" value={l.description} onChange={(e) => updLine(l.key, { description: e.target.value })} className="min-w-[180px]" />
+                            <label className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                              Unidad
+                              <input aria-label="Unidad" value={l.unit} onChange={(e) => updLine(l.key, { unit: e.target.value })} className="w-20 rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-600" />
+                            </label>
+                            {l.product_id ? (
+                              <p className="mt-1 text-[11px] text-slate-400">Catálogo · {l.sku}</p>
+                            ) : (
+                              <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+                                <select aria-label="Tipo" value={l.kind} onChange={(e) => updLine(l.key, { kind: e.target.value as ItemKind })} className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-600">
+                                  <option value="producto">Producto</option>
+                                  <option value="servicio">Servicio</option>
+                                </select>
+                                Personalizada · no se guarda en el catálogo
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 pr-2"><Input className="min-w-[64px] px-2 text-right" aria-label="Cantidad" type="number" min={0} step="any" value={l.quantity} onChange={(e) => updLine(l.key, { quantity: Number(e.target.value) })} /></td>
+                          <td className="py-2 pr-2"><Input className="min-w-[88px] px-2 text-right" aria-label="Precio unit." type="number" min={0} step="0.01" value={l.unit_price} onChange={(e) => updLine(l.key, { unit_price: Number(e.target.value) })} /></td>
+                          <td className="py-2 pr-2"><Input className="min-w-[60px] px-2 text-right" aria-label="Desc. %" type="number" min={0} max={100} step="0.01" value={l.discount_pct} onChange={(e) => updLine(l.key, { discount_pct: Number(e.target.value) })} /></td>
+                          {auth.canSeeCosts && (
+                            <td className="py-2 pr-2"><Input aria-label="Costo unit." type="number" min={0} step="0.01" value={l.unit_cost} onChange={(e) => updLine(l.key, { unit_cost: e.target.value })} className="min-w-[84px] bg-amber-50/60 px-2 text-right" /></td>
+                          )}
+                          <td className="py-4 text-center">
+                            <input type="checkbox" aria-label="Gravado con IVA" className="h-4 w-4 rounded border-slate-300 text-brand-500" checked={l.taxable} onChange={(e) => updLine(l.key, { taxable: e.target.checked })} />
+                          </td>
+                          <td className="whitespace-nowrap py-3 pr-2 text-right">
+                            <span className="font-semibold text-navy-900">{money(r.line_total)}</span>
+                            {r.line_discount > 0 && <span className="block text-[11px] text-slate-400">− {money(r.line_discount)}</span>}
+                          </td>
+                          <td className="whitespace-nowrap py-2 pr-5 text-right">
+                            <button className="rounded p-1 text-slate-400 hover:bg-slate-100" onClick={() => move(idx, -1)} aria-label="Subir"><ArrowUp className="h-4 w-4" /></button>
+                            <button className="rounded p-1 text-red-400 hover:bg-red-50" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} aria-label="Eliminar"><Trash2 className="h-4 w-4" /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Móvil: tarjetas */}
+              <div className="space-y-3 md:hidden">
                 {lines.map((l, idx) => {
                   const r = calcLine(l);
                   return (
@@ -411,7 +488,11 @@ export function QuoteEditorPage() {
                   );
                 })}
               </div>
+              </>
             )}
+            <button onClick={addCustom} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline">
+              <Plus className="h-4 w-4" /> Agregar línea personalizada
+            </button>
           </Card>
 
           <Card
