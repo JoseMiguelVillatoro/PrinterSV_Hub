@@ -21,11 +21,24 @@ Aplicación web privada para el ciclo comercial de Printer Computers & Systems:
    ```
    Alternativa sin CLI: pegá en el SQL Editor cada archivo de `supabase/migrations/` en orden.
 
-### 2. Usuarios
-1. **Authentication → Users → Invite user** para José (y luego Diana y su papá).
-2. Cuando José defina su contraseña, ejecutá `supabase/bootstrap_admin.sql` (cambiando el correo) en el SQL Editor.
-3. Desde la app, José asigna los demás roles en **Configuración → Usuarios y roles**.
-   Un usuario sin rol puede iniciar sesión pero no ve ningún dato.
+### 2. Invitaciones (Edge Function) y primer administrador
+1. Desplegá la función que permite invitar usuarios desde el Hub:
+   ```bash
+   npx supabase functions deploy invite-user
+   npx supabase secrets set SITE_URL=https://hub.printercomputers.com
+   ```
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase automáticamente.
+   La service key vive solo en la función; nunca en el navegador.
+2. **Authentication → URL Configuration → Redirect URLs:** agregá la URL del Hub (y `http://localhost:8080` para desarrollo).
+3. Solo el **primer** administrador se crea a mano: en **Authentication → Users → Invite user** invitá a José Miguel,
+   y cuando defina su contraseña ejecutá `supabase/bootstrap_admin.sql` (cambiando el correo).
+4. De ahí en adelante José Miguel invita a todos desde **Configuración → Usuarios y roles → Invitar usuario**:
+   correo, nombre y roles. El Hub genera un enlace de un solo uso para copiar o mandar por WhatsApp
+   (opcionalmente también por correo). Si alguien pierde el enlace u olvida la contraseña, **"Enlace de acceso"** genera uno nuevo.
+
+> El correo integrado de Supabase tiene límites estrictos (y en proyectos nuevos puede entregar solo a miembros del equipo).
+> Por eso el enlace siempre se muestra en pantalla. Para enviar correos sin límites, configurá un SMTP propio en
+> Authentication → Emails → SMTP Settings.
 
 ### 3. Frontend
 ```bash
@@ -88,7 +101,8 @@ PGHOST=... PGUSER=postgres npm run test:db   # migraciones + RLS + flujo en un P
 
 ## Estructura
 ```
-supabase/migrations/   esquema, lógica, RLS, reportes, seed demo, save_quote
+supabase/migrations/   esquema, lógica, RLS, reportes, seed demo, save_quote, borrado de demo
+supabase/functions/    invite-user (invitaciones y enlaces de acceso, solo admin)
 supabase/tests/        pruebas SQL
 src/lib/               cliente Supabase, auth/roles, cálculo, PDF, CSV, formatos
 src/components/        layout, UI y formularios
@@ -98,5 +112,4 @@ src/pages/             Dashboard, Clientes, Agenda, Cotizaciones, Pedidos, Produ
 ## Pendiente / siguientes pasos
 - Subida de logo e imágenes de producto a Supabase Storage (hoy se usa URL).
 - Envío de correo de cotización (requiere integrar un proveedor SMTP/Resend).
-- Invitar usuarios desde la app (requiere una Edge Function con la service key).
 - Programar `expire_overdue_quotes()` con pg_cron (hoy es un botón en Cotizaciones).

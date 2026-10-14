@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, ErrorBox, Field, Input, Modal, PageHeader, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { Copy, MessageCircle, UserPlus } from 'lucide-react';
 import { profileName, useProfiles, useSettings } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
@@ -208,13 +209,20 @@ function UsersTab() {
   });
 
   const has = (u: string, r: AppRole) => roles.data?.some((x) => x.user_id === u && x.role === r) ?? false;
+  const [invite, setInvite] = useState<{ open: boolean; email?: string; name?: string }>({ open: false });
 
   return (
-    <Card title="Usuarios">
-      <div className="mb-4 rounded-lg bg-brand-50 p-3 text-sm text-brand-800">
-        Para agregar a alguien: en Supabase → Authentication → Users → <b>Invite user</b> con su correo. Cuando acepte la invitación aparecerá aquí y le asignás su rol.
-        Sin rol no puede ver ningún dato.
-      </div>
+    <Card
+      title="Usuarios"
+      actions={
+        <Button size="sm" icon={<UserPlus className="h-4 w-4" />} onClick={() => setInvite({ open: true })}>
+          Invitar usuario
+        </Button>
+      }
+    >
+      <p className="mb-4 text-sm text-slate-500">
+        Invitá a cada persona con su correo y rol. Se genera un enlace para que defina su contraseña; podés copiarlo o mandarlo por WhatsApp. Sin rol no ve ningún dato.
+      </p>
       {isLoading ? (
         <Spinner />
       ) : (
@@ -228,6 +236,7 @@ function UsersTab() {
                 </Th>
               ))}
               <Th className="text-center">Activo</Th>
+              <Th />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -259,12 +268,170 @@ function UsersTab() {
                     onChange={(e) => toggleActive.mutate({ id: p.id, is_active: e.target.checked })}
                   />
                 </Td>
+                <Td className="whitespace-nowrap text-right">
+                  {p.id !== session?.user.id && p.email && (
+                    <button className="text-sm text-brand-600 hover:underline" onClick={() => setInvite({ open: true, email: p.email!, name: p.full_name })}>
+                      Enlace de acceso
+                    </button>
+                  )}
+                </Td>
               </tr>
             ))}
           </tbody>
         </Table>
       )}
+      <InviteModal
+        open={invite.open}
+        email={invite.email}
+        name={invite.name}
+        onClose={() => setInvite({ open: false })}
+        onDone={() => {
+          void qc.invalidateQueries({ queryKey: ['profiles'] });
+          void qc.invalidateQueries({ queryKey: ['user_roles'] });
+        }}
+      />
     </Card>
+  );
+}
+
+interface InviteResult {
+  user_id: string;
+  is_new: boolean;
+  link: string | null;
+  email_sent: boolean;
+  email_error: string | null;
+}
+
+function InviteModal({ open, email: presetEmail, name: presetName, onClose, onDone }: { open: boolean; email?: string; name?: string; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const existing = Boolean(presetEmail);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [roles, setRoles] = useState<AppRole[]>([]);
+  const [sendEmail, setSendEmail] = useState(false);
+  const [result, setResult] = useState<InviteResult | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setEmail(presetEmail ?? '');
+    setName(presetName ?? '');
+    setRoles(presetEmail ? [] : ['comercial']);
+    setSendEmail(false);
+    setResult(null);
+  }, [open, presetEmail, presetName]);
+
+  const m = useMutation({
+    mutationFn: async () => {
+      if (!existing && roles.length === 0) throw new Error('Elegí al menos un rol.');
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { email, full_name: name, roles, send_email: sendEmail },
+      });
+      if (error) {
+        // Mensaje del servidor si lo hay
+        const ctx = (error as { context?: Response }).context;
+        const detail = ctx ? await ctx.json().catch(() => null) : null;
+        throw new Error(detail?.error ?? error.message);
+      }
+      return data as InviteResult;
+    },
+    onSuccess: (r) => {
+      setResult(r);
+      onDone();
+    },
+    onError: toast.error,
+  });
+
+  const message = result?.link
+    ? `Hola${name ? ` ${name.split(' ')[0]}` : ''}, te comparto tu acceso a Printer Business Hub. Abrí este enlace para definir tu contraseña: ${result.link}`
+    : '';
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={existing ? 'Nuevo enlace de acceso' : 'Invitar usuario'}
+      footer={
+        result ? (
+          <Button onClick={onClose}>Listo</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button loading={m.isPending} onClick={() => m.mutate()}>
+              {existing ? 'Generar enlace' : 'Crear invitación'}
+            </Button>
+          </>
+        )
+      }
+    >
+      {!result ? (
+        <div className="space-y-4">
+          <Field label="Correo" required>
+            <Input type="email" value={email} disabled={existing} onChange={(e) => setEmail(e.target.value)} autoFocus />
+          </Field>
+          {!existing && (
+            <Field label="Nombre completo">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+          )}
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-600">{existing ? 'Agregar roles (opcional)' : 'Roles'}</p>
+            <div className="flex flex-wrap gap-4">
+              {(Object.keys(ROLE_LABEL) as AppRole[]).map((r) => (
+                <Checkbox
+                  key={r}
+                  label={ROLE_LABEL[r]}
+                  checked={roles.includes(r)}
+                  onChange={(e) => setRoles((rs) => (e.target.checked ? [...rs, r] : rs.filter((x) => x !== r)))}
+                />
+              ))}
+            </div>
+          </div>
+          <Checkbox label="Enviar también por correo" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
+          <p className="text-xs text-slate-500">
+            El correo usa el servicio de Supabase, que tiene límites mientras no se configure un SMTP propio. El enlace para copiar o mandar por WhatsApp siempre se genera.
+          </p>
+          {existing && <p className="text-xs text-slate-500">El enlace le permite definir una nueva contraseña. Úsalo si perdió la invitación o la olvidó.</p>}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
+            {result.is_new ? 'Usuario creado con sus roles.' : 'Enlace generado.'}{' '}
+            {result.email_sent ? 'También se envió por correo.' : ''}
+          </p>
+          {result.email_error && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No se pudo enviar el correo ({result.email_error}). Compartí el enlace manualmente.</p>
+          )}
+          {result.link && (
+            <>
+              <Field label="Enlace de acceso (de un solo uso, vence según la configuración de Supabase)">
+                <Textarea readOnly rows={3} value={result.link} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  icon={<Copy className="h-4 w-4" />}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(result.link!).then(() => toast.success('Enlace copiado'));
+                  }}
+                >
+                  Copiar enlace
+                </Button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(message)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  <MessageCircle className="h-4 w-4" /> Enviar por WhatsApp
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 
