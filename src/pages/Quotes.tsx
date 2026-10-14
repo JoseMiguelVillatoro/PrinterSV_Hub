@@ -155,7 +155,7 @@ export function QuotesPage() {
                 <Th>Número</Th>
                 <Th>Cliente</Th>
                 <Th className="hidden md:table-cell">Fecha</Th>
-                <Th className="hidden lg:table-cell">Próxima acción</Th>
+                <Th className="hidden 2xl:table-cell">Próxima acción</Th>
                 <Th className="hidden xl:table-cell">Responsable</Th>
                 <Th>Estado</Th>
                 <Th className="text-right">Total</Th>
@@ -171,12 +171,15 @@ export function QuotesPage() {
                     <DemoBadge show={q.is_demo} />
                     <p className="max-w-[220px] truncate text-xs text-slate-500">{q.title}</p>
                   </Td>
-                  <Td>{q.client_name}</Td>
+                  <Td className="min-w-[170px]">
+                    {q.client_name}
+                    {q.is_followup_late && <p className="text-xs font-medium text-red-600 2xl:hidden">Seguimiento atrasado</p>}
+                  </Td>
                   <Td className="hidden md:table-cell">
                     {dateOnly(q.issue_date)}
                     <p className={`text-xs ${q.is_overdue_validity ? 'font-medium text-red-600' : 'text-slate-500'}`}>Vence {dateOnly(q.valid_until)}</p>
                   </Td>
-                  <Td className="hidden lg:table-cell">
+                  <Td className="hidden 2xl:table-cell">
                     {q.next_action ? (
                       <>
                         <p className="max-w-[220px] truncate text-sm">{q.next_action}</p>
@@ -189,7 +192,7 @@ export function QuotesPage() {
                       '—'
                     )}
                   </Td>
-                  <Td className="hidden xl:table-cell">{q.owner_name ?? '—'}</Td>
+                  <Td className="hidden min-w-[140px] xl:table-cell">{q.owner_name ?? '—'}</Td>
                   <Td>
                     <Badge tone={QUOTE_STATUS_TONE[q.status]}>{QUOTE_STATUS_LABEL[q.status]}</Badge>
                     {q.order_number && <p className="mt-1 text-xs text-slate-500">{q.order_number}</p>}
