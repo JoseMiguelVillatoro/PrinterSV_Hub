@@ -24,8 +24,9 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveCo
 import { Button, Card, Checkbox, ErrorBox, Spinner } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { QUOTE_STATUS_LABEL, addDaysISO, dateTime, money, num, todayISO } from '@/lib/format';
+import { ORDER_STAGES, orderStage } from '@/lib/orderStage';
 import { supabase, unwrap } from '@/lib/supabase';
-import type { DashboardMetrics, QuoteStatus } from '@/lib/types';
+import type { DashboardMetrics, OrderView, QuoteStatus } from '@/lib/types';
 
 const STATUS_COLOR: Record<QuoteStatus, string> = {
   borrador: '#94a3b8',
@@ -134,6 +135,67 @@ function useRecentActivity() {
   });
 }
 
+interface DonutItem {
+  key: string;
+  label: string;
+  color: string;
+  count: number;
+  amount: number;
+  to: string;
+}
+
+/** Dona con leyenda; al pasar el cursor, el centro muestra ese estado (sin tooltip que lo tape). */
+function StatusDonut({ items, empty, testId }: { items: DonutItem[]; empty: string; testId: string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const total = items.reduce((a, x) => a + x.count, 0);
+  if (total === 0) return <p className="py-8 text-center text-sm text-slate-500">{empty}</p>;
+  const h = hover !== null ? items[hover] : null;
+  return (
+    <div className="flex flex-col items-center gap-4 sm:flex-row xl:flex-col 2xl:flex-row" data-testid={testId}>
+      <div className="relative h-40 w-40 shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={items}
+              dataKey="count"
+              nameKey="label"
+              innerRadius="64%"
+              outerRadius="100%"
+              paddingAngle={2}
+              stroke="none"
+              isAnimationActive={false}
+              onMouseEnter={(_, idx) => setHover(idx)}
+              onMouseLeave={() => setHover(null)}
+            >
+              {items.map((d, idx) => (
+                <Cell key={d.key} fill={d.color} opacity={hover === null || hover === idx ? 1 : 0.35} className="cursor-pointer outline-none" />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-3xl font-bold text-navy-900">{h ? h.count : total}</span>
+          <span className="max-w-[88px] text-xs leading-tight text-slate-500">{h ? h.label : 'Total'}</span>
+          {h && <span className="mt-0.5 text-[11px] font-medium text-slate-600">{money(h.amount)}</span>}
+        </div>
+      </div>
+      <ul className="w-full space-y-1.5 text-sm">
+        {items.map((d, idx) => (
+          <li key={d.key} onMouseEnter={() => setHover(idx)} onMouseLeave={() => setHover(null)}>
+            <Link to={d.to} className="flex items-center justify-between gap-3 rounded px-1 hover:bg-slate-50">
+              <span className="flex items-center gap-2 text-slate-600">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: d.color }} />
+                {d.label}
+              </span>
+              <span className="font-semibold text-navy-900">{d.count}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ago(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return 'Ahora';
@@ -151,13 +213,20 @@ export function DashboardPage() {
   const [from, setFrom] = useState(addDaysISO(today, -29));
   const [to, setTo] = useState(today);
   const [includeDemo, setIncludeDemo] = useState(true);
-  const [hover, setHover] = useState<number | null>(null);
 
   const { data: m, isLoading, error } = useQuery({
     queryKey: ['dashboard', from, to, includeDemo],
     queryFn: () => unwrap(supabase.rpc('dashboard_metrics', { p_from: from, p_to: to, p_include_demo: includeDemo })) as Promise<DashboardMetrics>,
   });
   const activity = useRecentActivity();
+  // Pedidos: estado actual (no depende del rango de fechas)
+  const orders = useQuery({
+    queryKey: ['dashboard', 'orders-stage'],
+    queryFn: () =>
+      unwrap(
+        supabase.from('v_orders').select('id, status, requires_purchase, purchase_status, reception_status, preparation_status, delivery_status, total, is_demo'),
+      ) as Promise<OrderView[]>,
+  });
 
   const s = useMemo(() => {
     const by = (st: QuoteStatus[]) => (m?.quotes.by_status ?? []).filter((x) => st.includes(x.status)).reduce((a, x) => ({ n: a.n + Number(x.count), amount: a.amount + Number(x.amount) }), { n: 0, amount: 0 });
@@ -168,8 +237,16 @@ export function DashboardPage() {
       lost: by(['rechazada', 'vencida']),
     };
   }, [m]);
-  const donut = (m?.quotes.by_status ?? []).filter((x) => Number(x.count) > 0 && x.status !== 'cancelada').map((x) => ({ ...x, count: Number(x.count), label: QUOTE_STATUS_LABEL[x.status] }));
-  const donutTotal = donut.reduce((a, x) => a + x.count, 0);
+  const quoteDonut: DonutItem[] = (m?.quotes.by_status ?? [])
+    .filter((x) => Number(x.count) > 0 && x.status !== 'cancelada')
+    .map((x) => ({ key: x.status, label: QUOTE_STATUS_LABEL[x.status], color: STATUS_COLOR[x.status], count: Number(x.count), amount: Number(x.amount), to: `/cotizaciones?estado=${x.status}` }));
+  const orderDonut: DonutItem[] = useMemo(() => {
+    const rows = (orders.data ?? []).filter((o) => includeDemo || !o.is_demo);
+    return ORDER_STAGES.map((st) => {
+      const inStage = rows.filter((o) => orderStage(o) === st.key);
+      return { key: st.key, label: st.label, color: st.color, count: inStage.length, amount: inStage.reduce((a, o) => a + Number(o.total), 0), to: `/pedidos?etapa=${st.key}` };
+    }).filter((x) => x.count > 0);
+  }, [orders.data, includeDemo]);
   const firstName = auth.profile?.full_name?.split(' ').slice(0, 2).join(' ');
 
   return (
@@ -229,54 +306,13 @@ export function DashboardPage() {
               </div>
             </Card>
 
-            <Card title="Cotizaciones por estado">
-              {donutTotal === 0 ? (
-                <p className="py-16 text-center text-sm text-slate-500">Sin cotizaciones en el periodo.</p>
-              ) : (
-                <div className="flex flex-col items-center gap-4 sm:flex-row xl:flex-col 2xl:flex-row">
-                  <div className="relative h-44 w-44 shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={donut}
-                          dataKey="count"
-                          nameKey="label"
-                          innerRadius="64%"
-                          outerRadius="100%"
-                          paddingAngle={2}
-                          stroke="none"
-                          isAnimationActive={false}
-                          onMouseEnter={(_, idx) => setHover(idx)}
-                          onMouseLeave={() => setHover(null)}
-                        >
-                          {donut.map((d, idx) => (
-                            <Cell key={d.status} fill={STATUS_COLOR[d.status]} opacity={hover === null || hover === idx ? 1 : 0.35} className="cursor-pointer outline-none" />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    {/* El centro muestra el total, o el estado bajo el cursor (sin tooltip que lo tape) */}
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="text-3xl font-bold text-navy-900">{hover === null ? donutTotal : donut[hover]?.count}</span>
-                      <span className="max-w-[90px] text-xs leading-tight text-slate-500">{hover === null ? 'Total' : donut[hover]?.label}</span>
-                      {hover !== null && donut[hover] && <span className="mt-0.5 text-[11px] font-medium text-slate-600">{money(Number(donut[hover].amount))}</span>}
-                    </div>
-                  </div>
-                  <ul className="w-full space-y-1.5 text-sm">
-                    {donut.map((d, idx) => (
-                      <li key={d.status} onMouseEnter={() => setHover(idx)} onMouseLeave={() => setHover(null)}>
-                        <Link to={`/cotizaciones?estado=${d.status}`} className="flex items-center justify-between gap-3 rounded px-1 hover:bg-slate-50">
-                          <span className="flex items-center gap-2 text-slate-600">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR[d.status] }} />
-                            {d.label}
-                          </span>
-                          <span className="font-semibold text-navy-900">{d.count}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            <Card title="Por estado">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Cotizaciones · en el periodo</p>
+              <StatusDonut items={quoteDonut} empty="Sin cotizaciones en el periodo." testId="donut-cotizaciones" />
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Pedidos · estado actual</p>
+                {orders.isLoading ? <Spinner /> : <StatusDonut items={orderDonut} empty="Todavía no hay pedidos." testId="donut-pedidos" />}
+              </div>
             </Card>
 
             <Card title="Actividad reciente">
