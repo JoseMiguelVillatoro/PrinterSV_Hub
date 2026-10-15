@@ -49,7 +49,7 @@ npm run dev               # http://localhost:8080
 
 ### 4. Publicar
 Cualquier hosting estático sirve (`npm run build` → `dist/`). Incluye `vercel.json` (rewrites SPA) y `robots.txt` con `noindex`.
-En Vercel: importá el repo, agregá `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, y luego el dominio `hub.printercomputers.com`.
+En Vercel: importá el repo y agregá `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`, **o** usá la integración Supabase de Vercel con el prefijo `SUPABASE` (crea `SUPABASE_URL` y `SUPABASE_ANON_KEY`, que la app también reconoce). Luego el dominio `hub.printercomputers.com`.
 Si preferís Lovable, conectá este repo por GitHub; Lovable puede editar la UI sin tocar la base de datos.
 
 ### 5. Datos de la empresa
