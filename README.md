@@ -40,6 +40,18 @@ Aplicación web privada para el ciclo comercial de Printer Computers & Systems:
 > Por eso el enlace siempre se muestra en pantalla. Para enviar correos sin límites, configurá un SMTP propio en
 > Authentication → Emails → SMTP Settings.
 
+### 2b. Envío de cotizaciones por correo (Resend, opcional)
+La función `send-quote-email` manda la cotización con el PDF adjunto y la pasa a "Enviada" (o registra el reenvío).
+1. En [resend.com](https://resend.com): agregá el dominio `printercomputers.com` y copiá sus registros DNS (MX/TXT en `send.` y `resend._domainkey`)
+   donde se administra el DNS (hoy, Vercel → Domains). No reemplazan ningún registro existente.
+2. Resend → API Keys → crear una con permiso *Sending access*.
+3. Supabase → Edge Functions → Secrets: `RESEND_API_KEY` = la clave, `RESEND_FROM` = `Printer Computers <cotizaciones@printercomputers.com>`.
+4. Publicar la función: `npx supabase functions deploy send-quote-email`, o en el panel Edge Functions → *Deploy a new function* → *Via Editor*,
+   nombre `send-quote-email`, pegar `supabase/functions/send-quote-email/index.ts`.
+
+Sin estos pasos la app sigue funcionando: el botón avisa que el envío no está activado y se puede usar "Ya la mandé yo".
+La API key nunca llega al navegador; la función valida la sesión del usuario y lee la cotización con sus permisos (RLS).
+
 ### 3. Frontend
 ```bash
 cp .env.example .env      # URL y anon key de Supabase → Project Settings → API
@@ -83,7 +95,7 @@ no lo recibe ni siquiera consultando la API directamente.
 - **Compra, recepción, preparación y entrega** son etapas independientes vía `update_order_stage()`, con trazabilidad (quién/cuándo/comentario).
   No se puede recibir sin comprar, entregar sin preparar, ni cerrar sin entregar.
 - **Auditoría** de cambios en clientes, productos, costos, cotizaciones, pedidos, roles y configuración.
-- **El Hub no envía correos:** "Enviada" registra que la cotización se envió por fuera (PDF por correo/WhatsApp).
+- **Envío:** "Enviada" se registra al mandarla por correo desde el Hub (Resend) o, si se envió por fuera (PDF por correo/WhatsApp), con "Ya la mandé yo".
 
 ## Datos demo
 5 clientes, 8 productos/servicios, 6 cotizaciones en 5 estados, 3 visitas, 3 tareas, 2 pedidos en etapas distintas,
@@ -102,7 +114,7 @@ PGHOST=... PGUSER=postgres npm run test:db   # migraciones + RLS + flujo en un P
 ## Estructura
 ```
 supabase/migrations/   esquema, lógica, RLS, reportes, seed demo, save_quote, borrado de demo
-supabase/functions/    invite-user (invitaciones y enlaces de acceso, solo admin)
+supabase/functions/    invite-user (invitaciones, solo admin) · send-quote-email (cotización por correo con Resend)
 supabase/tests/        pruebas SQL
 src/lib/               cliente Supabase, auth/roles, cálculo, PDF, CSV, formatos
 src/components/        layout, UI y formularios
@@ -111,5 +123,4 @@ src/pages/             Dashboard, Clientes, Agenda, Cotizaciones, Pedidos, Produ
 
 ## Pendiente / siguientes pasos
 - Subida de logo e imágenes de producto a Supabase Storage (hoy se usa URL).
-- Envío de correo de cotización (requiere integrar un proveedor SMTP/Resend).
 - Programar `expire_overdue_quotes()` con pg_cron (hoy es un botón en Cotizaciones).

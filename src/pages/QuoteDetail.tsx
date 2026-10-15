@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardCheck, Copy, Eye, FileDown, MessageSquarePlus, Pencil, RefreshCcw, Send } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, Copy, Download, Eye, FileDown, Mail, MessageSquarePlus, Pencil, RefreshCcw } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { TaskFormModal } from '@/components/forms';
+import { EMAIL_ALLOWED, QuoteEmailModal } from '@/components/QuoteEmailModal';
 import { Badge, Button, Card, Checkbox, DemoBadge, ErrorBox, Field, Input, Modal, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { profileName, useProfiles, useSettings } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
@@ -37,6 +38,7 @@ export function QuoteDetailPage() {
   const [commentModal, setCommentModal] = useState(false);
   const [orderModal, setOrderModal] = useState(false);
   const [taskModal, setTaskModal] = useState(false);
+  const [emailModal, setEmailModal] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['quote', id],
@@ -150,6 +152,11 @@ export function QuoteDetailPage() {
           <Button variant="secondary" icon={<FileDown className="h-4 w-4" />} loading={pdfLoading} onClick={downloadPdf}>
             PDF
           </Button>
+          {(EMAIL_ALLOWED as readonly string[]).includes(q.status) && (
+            <Button variant="secondary" icon={<Mail className="h-4 w-4" />} onClick={() => setEmailModal(true)}>
+              Enviar por correo
+            </Button>
+          )}
           {editable && (
             <Button variant="secondary" icon={<Pencil className="h-4 w-4" />} onClick={() => navigate(`/cotizaciones/${q.id}/editar`)}>
               Editar
@@ -415,7 +422,27 @@ export function QuoteDetailPage() {
       >
         {previewUrl && <iframe title="Vista previa del PDF" src={previewUrl} className="h-[70vh] w-full rounded-lg border border-slate-200" />}
       </Modal>
-      <StatusModal open={statusModal} onClose={() => setStatusModal(false)} quote={q} options={transitions} onDone={invalidate} />
+      <StatusModal
+        open={statusModal}
+        onClose={() => setStatusModal(false)}
+        quote={q}
+        options={transitions}
+        onDone={invalidate}
+        onEmail={() => {
+          setStatusModal(false);
+          setEmailModal(true);
+        }}
+      />
+      <QuoteEmailModal
+        open={emailModal}
+        onClose={() => setEmailModal(false)}
+        quote={q}
+        client={client}
+        contact={contact}
+        settings={settings}
+        makePdf={makePdf}
+        onSent={invalidate}
+      />
       <FollowupModal open={followModal} onClose={() => setFollowModal(false)} quote={q} onDone={invalidate} />
       <CommentModal open={commentModal} onClose={() => setCommentModal(false)} quoteId={q.id} onDone={invalidate} />
       <ConvertModal open={orderModal} onClose={() => setOrderModal(false)} quote={q} onDone={(orderId) => { invalidate(); navigate(`/pedidos/${orderId}`); }} />
@@ -424,9 +451,25 @@ export function QuoteDetailPage() {
   );
 }
 
-function StatusModal({ open, onClose, quote, options, onDone }: { open: boolean; onClose: () => void; quote: QuoteView; options: QuoteStatus[]; onDone: () => void }) {
+function StatusModal({
+  open,
+  onClose,
+  quote,
+  options,
+  onDone,
+  onEmail,
+}: {
+  open: boolean;
+  onClose: () => void;
+  quote: QuoteView;
+  options: QuoteStatus[];
+  onDone: () => void;
+  onEmail: () => void;
+}) {
   const toast = useToast();
   const [status, setStatus] = useState<QuoteStatus | ''>('');
+  const [sendMode, setSendMode] = useState<'correo' | 'manual'>('correo');
+  const viaEmail = status === 'enviada' && sendMode === 'correo';
   const [comment, setComment] = useState('');
   const [reason, setReason] = useState('');
   const m = useMutation({
@@ -459,9 +502,15 @@ function StatusModal({ open, onClose, quote, options, onDone }: { open: boolean;
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button disabled={!status || (status === 'rechazada' && !reason.trim())} loading={m.isPending} onClick={() => m.mutate()}>
-            Confirmar
-          </Button>
+          {viaEmail ? (
+            <Button icon={<Mail className="h-4 w-4" />} onClick={() => { setStatus(''); onEmail(); }}>
+              Redactar correo
+            </Button>
+          ) : (
+            <Button disabled={!status || (status === 'rechazada' && !reason.trim())} loading={m.isPending} onClick={() => m.mutate()}>
+              Confirmar
+            </Button>
+          )}
         </>
       }
     >
@@ -480,10 +529,23 @@ function StatusModal({ open, onClose, quote, options, onDone }: { open: boolean;
           </Select>
         </Field>
         {status === 'enviada' && (
-          <p className="flex items-start gap-2 rounded-lg bg-brand-50 p-3 text-xs text-brand-700">
-            <Send className="mt-0.5 h-4 w-4 shrink-0" />
-            El Hub no envía correos: esto registra que vos la enviaste (descargá el PDF y mandala por tu correo o WhatsApp).
-          </p>
+          <fieldset className="space-y-2">
+            <legend className="mb-1 text-xs font-medium text-slate-600">¿Cómo la enviás?</legend>
+            <SendOption
+              checked={sendMode === 'correo'}
+              onSelect={() => setSendMode('correo')}
+              icon={<Mail className="h-4 w-4" />}
+              title="Por correo desde el Hub"
+              text="Se envía al correo registrado del cliente con el PDF adjunto."
+            />
+            <SendOption
+              checked={sendMode === 'manual'}
+              onSelect={() => setSendMode('manual')}
+              icon={<Download className="h-4 w-4" />}
+              title="Ya la mandé yo"
+              text="Descargaste el PDF y lo mandaste por tu correo o WhatsApp. Solo se registra como enviada."
+            />
+          </fieldset>
         )}
         {status === 'aceptada' && (
           <p className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
@@ -495,11 +557,30 @@ function StatusModal({ open, onClose, quote, options, onDone }: { open: boolean;
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Precio, tiempo de entrega, eligió a otro proveedor…" />
           </Field>
         )}
-        <Field label="Comentario (opcional)">
-          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
-        </Field>
+        {!viaEmail && (
+          <Field label="Comentario (opcional)">
+            <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
+          </Field>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function SendOption({ checked, onSelect, icon, title, text }: { checked: boolean; onSelect: () => void; icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+        checked ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <input type="radio" name="send-mode" className="mt-1 h-4 w-4 text-brand-500 focus:ring-brand-500" checked={checked} onChange={onSelect} />
+      <span className={checked ? 'text-brand-600' : 'text-slate-400'}>{icon}</span>
+      <span>
+        <span className="block text-sm font-medium text-slate-800">{title}</span>
+        <span className="block text-xs text-slate-500">{text}</span>
+      </span>
+    </label>
   );
 }
 
