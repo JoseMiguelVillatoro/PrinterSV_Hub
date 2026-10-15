@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarPlus, FilePlus2, ListPlus, Pencil, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, CalendarPlus, ExternalLink, FilePlus2, ListPlus, MapPin, Navigation, Pencil, UserPlus } from 'lucide-react';
+import { Suspense, lazy, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { initials } from '@/components/Layout';
 import { ClientFormModal, ContactFormModal, TaskFormModal, VisitFormModal } from '@/components/forms';
 import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Spinner } from '@/components/ui';
 import { profileName, useProfiles } from '@/hooks/data';
 import { useAuth } from '@/lib/auth';
+import { googleDirectionsUrl, googleMapsUrl, wazeUrl } from '@/lib/maps';
 import {
   CLIENT_STATUS_LABEL,
   DELIVERY_LABEL,
@@ -40,6 +41,37 @@ interface Expediente {
   tasks: Task[];
   quotes: Quote[];
   orders: Order[];
+}
+
+const ClientMapView = lazy(() => import('@/components/ClientMap').then((m) => ({ default: m.ClientMapView })));
+
+function ClientLocation({ lat, lng, onEdit }: { lat: number | null; lng: number | null; onEdit: () => void }) {
+  if (lat === null || lng === null) {
+    return (
+      <button type="button" onClick={onEdit} className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-3 text-sm text-slate-500 hover:border-brand-300 hover:text-brand-600">
+        <MapPin className="h-4 w-4" /> Ubicar en el mapa
+      </button>
+    );
+  }
+  const link = 'inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline';
+  return (
+    <div className="space-y-2">
+      <Suspense fallback={<div className="h-44 animate-pulse rounded-lg bg-slate-100" />}>
+        <ClientMapView lat={lat} lng={lng} />
+      </Suspense>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <a className={link} href={googleMapsUrl(lat, lng)} target="_blank" rel="noreferrer">
+          <ExternalLink className="h-3.5 w-3.5" /> Ver en Google Maps
+        </a>
+        <a className={link} href={googleDirectionsUrl(lat, lng)} target="_blank" rel="noreferrer">
+          <Navigation className="h-3.5 w-3.5" /> Cómo llegar
+        </a>
+        <a className={link} href={wazeUrl(lat, lng)} target="_blank" rel="noreferrer">
+          <Navigation className="h-3.5 w-3.5" /> Waze
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
@@ -173,6 +205,7 @@ export function ClientDetailPage() {
               <Info label="Teléfono" value={client.phone} />
               <Info label="Correo" value={client.email} />
               <Info label="Dirección" value={[client.address, client.city, client.department].filter(Boolean).join(', ')} />
+              <ClientLocation lat={client.latitude} lng={client.longitude} onEdit={() => setEditing(true)} />
               <Info label="Origen" value={client.source} />
               <Info label="Necesidades" value={client.needs} />
               <Info label="Notas" value={client.notes} />

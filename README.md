@@ -57,6 +57,10 @@ La migración `…0010_product_images.sql` crea el espacio `product-images` en S
 subida solo para Admin y Cotizaciones/Operaciones). Las fotos se comprimen en el navegador (~800 px, JPEG) antes de subirlas.
 Cada cotización tiene "Incluir fotos de los productos en el PDF" (por defecto sí). Los productos Demo usan las ilustraciones de `public/demo/`.
 
+### 2d. Ubicación de clientes
+La migración `…0011_client_location.sql` agrega `latitude`/`longitude` a clientes. El mapa usa Leaflet + OpenStreetMap
+(sin API key) y la búsqueda de direcciones usa Nominatim (OSM); el detalle enlaza a Google Maps, "Cómo llegar" y Waze.
+
 ### 3. Frontend
 ```bash
 cp .env.example .env      # URL y anon key de Supabase → Project Settings → API

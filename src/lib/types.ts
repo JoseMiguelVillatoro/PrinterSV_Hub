@@ -74,6 +74,8 @@ export interface Client {
   website: string | null;
   needs: string | null;
   notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
   owner_id: string | null;
   is_demo: boolean;
   created_at: string;

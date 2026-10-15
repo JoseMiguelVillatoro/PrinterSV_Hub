@@ -1,6 +1,6 @@
 // Formularios modales compartidos: cliente, contacto, visita y tarea.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useClientOptions, useContacts, useProfiles } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
@@ -17,6 +17,8 @@ import {
 import { supabase, unwrap } from '@/lib/supabase';
 import type { Client, ClientStatus, Contact, Task, TaskPriority, TaskStatus, Visit, VisitStatus } from '@/lib/types';
 import { Button, Checkbox, Field, Input, Modal, Select, Textarea } from './ui';
+
+const LocationPicker = lazy(() => import('./ClientMap').then((m) => ({ default: m.LocationPicker })));
 
 /** Convierte '' en null para columnas opcionales. */
 function clean<T extends Record<string, unknown>>(obj: T): T {
@@ -63,6 +65,8 @@ const emptyClient = (owner: string | null): ClientDraft => ({
   website: '',
   needs: '',
   notes: '',
+  latitude: null,
+  longitude: null,
   owner_id: owner,
 });
 
@@ -172,6 +176,17 @@ export function ClientFormModal({
         <Field label="Departamento">
           <Input value={form.department ?? ''} onChange={(e) => set('department', e.target.value)} />
         </Field>
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Ubicación en el mapa (opcional)</span>
+          <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-slate-100" />}>
+            <LocationPicker
+              lat={form.latitude}
+              lng={form.longitude}
+              query={[form.address, form.city, form.department].filter(Boolean).join(', ')}
+              onChange={(la, ln) => setForm((f) => ({ ...f, latitude: la, longitude: ln }))}
+            />
+          </Suspense>
+        </div>
         <Field label="Necesidades detectadas" className="sm:col-span-2">
           <Textarea value={form.needs ?? ''} onChange={(e) => set('needs', e.target.value)} />
         </Field>
