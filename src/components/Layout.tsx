@@ -5,6 +5,7 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -18,6 +19,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/format';
+import { AccountModal } from './AccountModal';
 import { GlobalSearch } from './GlobalSearch';
 
 interface NavItem {
@@ -57,7 +59,7 @@ export function Brand({ compact }: { compact?: boolean }) {
   );
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({ onNavigate, onAccount }: { onNavigate?: () => void; onAccount: () => void }) {
   const auth = useAuth();
   return (
     <div className="flex h-full flex-col bg-navy-900">
@@ -94,8 +96,17 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         </div>
         <button
-          onClick={() => void auth.signOut()}
+          onClick={() => {
+            onNavigate?.();
+            onAccount();
+          }}
           className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+        >
+          <KeyRound className="h-4 w-4" /> Mi cuenta
+        </button>
+        <button
+          onClick={() => void auth.signOut()}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-4 w-4" /> Cerrar sesión
         </button>
@@ -109,6 +120,7 @@ const MOBILE_TABS = ['/', '/clientes', '/cotizaciones', '/pedidos'];
 export function Layout() {
   const auth = useAuth();
   const [open, setOpen] = useState(false);
+  const [account, setAccount] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (to: string) => (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to));
@@ -116,7 +128,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-slate-100/70">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
-        <Sidebar />
+        <Sidebar onAccount={() => setAccount(true)} />
       </aside>
 
       {open && (
@@ -126,7 +138,7 @@ export function Layout() {
             <button onClick={() => setOpen(false)} className="absolute right-3 top-7 z-10 text-slate-300" aria-label="Cerrar menú">
               <X className="h-5 w-5" />
             </button>
-            <Sidebar onNavigate={() => setOpen(false)} />
+            <Sidebar onNavigate={() => setOpen(false)} onAccount={() => setAccount(true)} />
           </aside>
         </div>
       )}
@@ -150,12 +162,13 @@ export function Layout() {
                   <Plus className="h-4 w-4" /> Nueva cotización
                 </button>
               )}
-              <span
-                title={auth.profile?.full_name ?? ''}
-                className="hidden h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-sm font-semibold text-white lg:flex"
+              <button
+                onClick={() => setAccount(true)}
+                title="Mi cuenta"
+                className="hidden h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-sm font-semibold text-white hover:opacity-90 lg:flex"
               >
                 {initials(auth.profile?.full_name)}
-              </span>
+              </button>
               <button onClick={() => setOpen(true)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Abrir menú">
                 <Menu className="h-5 w-5" />
               </button>
@@ -170,6 +183,8 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <AccountModal open={account} onClose={() => setAccount(false)} />
 
       {/* Navegación inferior en móvil */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
