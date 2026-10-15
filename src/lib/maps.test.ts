@@ -14,3 +14,13 @@ describe('parseMapsLink', () => {
     expect(parseMapsLink('hola').ok).toBe(false);
   });
 });
+
+import { routeUrl } from './maps';
+describe('routeUrl', () => {
+  it('última parada = destino, las demás = paradas intermedias', () => {
+    const u = new URL(routeUrl([[13.7, -89.2], [13.5, -88.9], [13.35, -88.45]]));
+    expect(u.searchParams.get('destination')).toBe('13.35,-88.45');
+    expect(u.searchParams.get('waypoints')).toBe('13.7,-89.2|13.5,-88.9');
+    expect(u.searchParams.get('origin')).toBeNull();
+  });
+});

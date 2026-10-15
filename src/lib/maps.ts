@@ -31,3 +31,37 @@ export function parseMapsLink(text: string): { ok: true; lat: number; lng: numbe
   }
   return { ok: false, error: 'No encontré coordenadas en ese texto. Pegá el enlace de Google Maps del lugar o tocá el mapa.' };
 }
+
+/**
+ * Ruta con varias paradas en Google Maps. Sin origen: arranca desde donde está la persona.
+ * Google admite destino + hasta 9 paradas intermedias.
+ */
+export function routeUrl(stops: [number, number][]): string {
+  if (!stops.length) return '';
+  const fmt = ([a, b]: [number, number]) => `${a},${b}`;
+  const dest = fmt(stops[stops.length - 1]);
+  const way = stops.slice(0, -1).slice(0, 9).map(fmt).join('|');
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}${way ? `&waypoints=${encodeURIComponent(way)}` : ''}&travelmode=driving`;
+}
+
+/** Ordena las paradas por cercanía (vecino más cercano, empezando por la primera). */
+export function orderByProximity<T extends { latitude: number; longitude: number }>(stops: T[]): T[] {
+  if (stops.length < 3) return stops;
+  const rest = [...stops.slice(1)];
+  const out = [stops[0]];
+  while (rest.length) {
+    const last = out[out.length - 1];
+    let best = 0;
+    let bestD = Infinity;
+    rest.forEach((s, i) => {
+      const d = (s.latitude - last.latitude) ** 2 + ((s.longitude - last.longitude) * Math.cos((last.latitude * Math.PI) / 180)) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    out.push(rest.splice(best, 1)[0]);
+  }
+  return out;
+}
+

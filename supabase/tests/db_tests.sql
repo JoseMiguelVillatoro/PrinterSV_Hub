@@ -16,11 +16,12 @@ insert into public.user_roles (user_id, role) values
 
 -- ---------- 1. Seed: conteos y carga única ----------
 do $$ begin
-  assert (select count(*) from clients where is_demo) = 5, 'clientes demo';
+  assert (select count(*) from clients where is_demo) = 20, 'clientes demo (5 + 15 del mapa)';
+  assert (select count(*) from clients where is_demo and latitude is not null) = 20, 'clientes demo con ubicación';
   assert (select count(*) from products where is_demo) = 8, 'productos demo';
   assert (select count(*) from quotes where is_demo) = 6, 'cotizaciones demo';
   assert (select count(distinct status) from quotes where is_demo) = 5, 'estados distintos';
-  assert (select count(*) from visits where is_demo) = 3, 'visitas demo';
+  assert (select count(*) from visits where is_demo) = 7, 'visitas demo (3 + 4 del mapa)';
   assert (select count(*) from tasks where is_demo) = 3, 'tareas demo';
   assert (select count(*) from orders where is_demo) = 2, 'pedidos demo';
   assert (select count(*) from profiles) = 4, 'perfiles creados por trigger';
@@ -28,12 +29,13 @@ end $$;
 
 select public.apply_demo_seed() as second_run;   -- debe decir skipped
 \i migrations/20261014000006_demo_seed.sql
+\i migrations/20261015000013_demo_map_clients.sql
 do $$ begin
-  assert (select count(*) from clients) = 5, 'seed duplicó clientes';
+  assert (select count(*) from clients) = 20, 'seed duplicó clientes';
   assert (select count(*) from quotes) = 6, 'seed duplicó cotizaciones';
   assert (select count(*) from quote_items) = 12, 'seed duplicó líneas';
   assert (select count(*) from orders) = 2, 'seed duplicó pedidos';
-  assert (select count(*) from seed_runs) = 1, 'seed_runs';
+  assert (select count(*) from seed_runs) = 2, 'seed_runs (demo + demo_map)';
   assert (select max(last_value) from document_sequences where doc_type = 'quote') = 6, 'numeración no avanzó en re-ejecución';
 end $$;
 
