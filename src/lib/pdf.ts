@@ -8,27 +8,51 @@ const BLUE: [number, number, number] = [29, 111, 232];
 const CYAN: [number, number, number] = [6, 182, 212];
 const GRAY: [number, number, number] = [100, 116, 139];
 const DEFAULT_LOGO = '/logo.png';
+const PHOTO = 40; // tamaño de la miniatura en el PDF (pt)
 
-async function loadImage(url: string): Promise<{ data: string; w: number; h: number } | null> {
+type LoadedImage = { data: string; w: number; h: number; format: 'PNG' | 'JPEG' };
+
+/**
+ * Descarga una imagen y la reduce a `maxPx` (lado mayor) antes de meterla al PDF,
+ * para que el archivo pese poco aunque la imagen original sea grande.
+ * PNG conserva transparencia (logo); JPEG con fondo blanco para fotos.
+ * Si no carga (CORS, enlace roto), devuelve null y el PDF sale sin esa imagen.
+ */
+async function loadImage(url: string, maxPx: number, format: 'PNG' | 'JPEG'): Promise<LoadedImage | null> {
   try {
     const res = await fetch(url, { mode: 'cors' });
     if (!res.ok) return null;
     const blob = await res.blob();
-    const data = await new Promise<string>((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result as string);
-      r.onerror = reject;
-      r.readAsDataURL(blob);
-    });
-    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+    const src = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const u = URL.createObjectURL(blob);
       const img = new Image();
-      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-      img.onerror = () => resolve({ w: 1, h: 1 });
-      img.src = data;
+      img.onload = () => {
+        URL.revokeObjectURL(u);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(u);
+        reject(new Error('imagen inválida'));
+      };
+      img.src = u;
     });
-    return { data, ...dims };
+    const scale = Math.min(1, maxPx / Math.max(src.naturalWidth, src.naturalHeight));
+    const w = Math.max(1, Math.round(src.naturalWidth * scale));
+    const h = Math.max(1, Math.round(src.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    if (format === 'JPEG') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, 0, 0, w, h);
+    const data = canvas.toDataURL(format === 'PNG' ? 'image/png' : 'image/jpeg', 0.85);
+    return { data, w, h, format };
   } catch {
-    return null; // Si el logo no carga (CORS, URL inválida), el PDF sale sin logo.
+    return null;
   }
 }
 
@@ -40,11 +64,13 @@ export interface QuotePdfData {
   contact: Contact | null;
   settings: CompanySettings;
   ownerName?: string | null;
+  /** product_id → URL de la foto del catálogo (solo se usa si quote.show_images). */
+  productImages?: Record<string, string>;
 }
 
 /** Genera el PDF de una cotización. Usa los totales guardados en la base de datos. */
-export async function buildQuotePdf({ quote, items, adjustments, client, contact, settings, ownerName }: QuotePdfData): Promise<jsPDF> {
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+export async function buildQuotePdf({ quote, items, adjustments, client, contact, settings, ownerName, productImages }: QuotePdfData): Promise<jsPDF> {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const M = 40;
   const cur = quote.currency;
@@ -57,12 +83,19 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
 
   // Logo (configurado o el de la marca incluido en la app) + nombre
   let y = 36;
-  const customLogo = settings.logo_url ? await loadImage(settings.logo_url) : null;
-  const logo = customLogo ?? (await loadImage(DEFAULT_LOGO));
+  // Fotos de las líneas (en paralelo con el logo)
+  const photoUrls = quote.show_images && productImages ? productImages : {};
+  const photosPromise = Promise.all(
+    items.map((it) => (it.product_id && photoUrls[it.product_id] ? loadImage(photoUrls[it.product_id], 180, 'JPEG') : Promise.resolve(null))),
+  );
+  const customLogo = settings.logo_url ? await loadImage(settings.logo_url, 400, 'PNG') : null;
+  const logo = customLogo ?? (await loadImage(DEFAULT_LOGO, 160, 'PNG'));
+  const photos = await photosPromise;
+  const withPhotos = photos.some(Boolean);
   if (customLogo) {
     const h = 48;
     const w = Math.min((customLogo.w / customLogo.h) * h, 190);
-    doc.addImage(customLogo.data, customLogo.data.includes('image/png') ? 'PNG' : 'JPEG', M, y - 10, w, h);
+    doc.addImage(customLogo.data, 'PNG', M, y - 10, w, h);
   } else {
     if (logo) doc.addImage(logo.data, 'PNG', M, y - 12, (logo.w / logo.h) * 50, 50);
     const tx = M + (logo ? (logo.w / logo.h) * 50 + 10 : 0);
@@ -140,9 +173,10 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
 
   // Líneas
   const hasDiscount = items.some((i) => Number(i.discount_pct) > 0);
-  const head = ['#', 'Descripción', 'Cant.', 'Precio unit.', ...(hasDiscount ? ['Desc.'] : []), 'Total'];
+  const head = ['#', ...(withPhotos ? [''] : []), 'Descripción', 'Cant.', 'Precio unit.', ...(hasDiscount ? ['Desc.'] : []), 'Total'];
   const body = items.map((it, idx) => [
     String(idx + 1),
+    ...(withPhotos ? [''] : []),
     `${it.description}${it.sku ? `\nSKU: ${it.sku}` : ''}${it.taxable ? '' : '  (exento)'}`,
     `${num(it.quantity, 3)} ${it.unit}`,
     money(it.unit_price, cur),
@@ -158,11 +192,32 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 5, textColor: [30, 41, 59], lineColor: [226, 232, 240], lineWidth: 0.5 },
     headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    columnStyles: {
-      0: { cellWidth: 22, halign: 'center' },
-      2: { halign: 'right', cellWidth: 60 },
-      3: { halign: 'right', cellWidth: 72 },
-      ...(hasDiscount ? { 4: { halign: 'right', cellWidth: 44 }, 5: { halign: 'right', cellWidth: 78 } } : { 4: { halign: 'right', cellWidth: 78 } }),
+    bodyStyles: withPhotos ? { minCellHeight: PHOTO + 8, valign: 'middle' } : undefined,
+    columnStyles: (() => {
+      const o = withPhotos ? 1 : 0; // con fotos, todo se corre una columna
+      return {
+        0: { cellWidth: 22, halign: 'center' as const },
+        ...(withPhotos ? { 1: { cellWidth: PHOTO + 8 } } : {}),
+        [2 + o]: { halign: 'right' as const, cellWidth: 60 },
+        [3 + o]: { halign: 'right' as const, cellWidth: 72 },
+        ...(hasDiscount
+          ? { [4 + o]: { halign: 'right' as const, cellWidth: 44 }, [5 + o]: { halign: 'right' as const, cellWidth: 78 } }
+          : { [4 + o]: { halign: 'right' as const, cellWidth: 78 } }),
+      };
+    })(),
+    didDrawCell: (d) => {
+      if (!withPhotos || d.section !== 'body' || d.column.index !== 1) return;
+      const img = photos[d.row.index];
+      if (!img) return;
+      // Miniatura centrada y proporcional dentro de un cuadro de PHOTO × PHOTO
+      const r = Math.min(PHOTO / img.w, PHOTO / img.h);
+      const w = img.w * r;
+      const h = img.h * r;
+      const x = d.cell.x + (d.cell.width - w) / 2;
+      const yy = d.cell.y + (d.cell.height - h) / 2;
+      doc.addImage(img.data, 'JPEG', x, yy, w, h, undefined, 'FAST');
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(d.cell.x + (d.cell.width - PHOTO) / 2 - 1, d.cell.y + (d.cell.height - PHOTO) / 2 - 1, PHOTO + 2, PHOTO + 2, 3, 3, 'S');
     },
   });
 

@@ -52,6 +52,11 @@ La función `send-quote-email` manda la cotización con el PDF adjunto y la pasa
 Sin estos pasos la app sigue funcionando: el botón avisa que el envío no está activado y se puede usar "Ya la mandé yo".
 La API key nunca llega al navegador; la función valida la sesión del usuario y lee la cotización con sus permisos (RLS).
 
+### 2c. Fotos de productos
+La migración `…0010_product_images.sql` crea el espacio `product-images` en Supabase Storage (lectura por enlace,
+subida solo para Admin y Cotizaciones/Operaciones). Las fotos se comprimen en el navegador (~800 px, JPEG) antes de subirlas.
+Cada cotización tiene "Incluir fotos de los productos en el PDF" (por defecto sí). Los productos Demo usan las ilustraciones de `public/demo/`.
+
 ### 3. Frontend
 ```bash
 cp .env.example .env      # URL y anon key de Supabase → Project Settings → API
@@ -122,5 +127,5 @@ src/pages/             Dashboard, Clientes, Agenda, Cotizaciones, Pedidos, Produ
 ```
 
 ## Pendiente / siguientes pasos
-- Subida de logo e imágenes de producto a Supabase Storage (hoy se usa URL).
+- Subida del logo de la empresa a Supabase Storage (hoy se usa URL; las fotos de producto ya se suben).
 - Programar `expire_overdue_quotes()` con pg_cron (hoy es un botón en Cotizaciones).

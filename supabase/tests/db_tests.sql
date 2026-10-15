@@ -380,6 +380,29 @@ begin
 end $$;
 reset role;
 
+-- ---------- 6d. Fotos de productos ----------
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare v_id uuid; v_dup uuid;
+begin
+  assert (select count(*) from products where is_demo and image_url like '/demo/%.jpg') = 8, 'fotos demo';
+  -- por defecto se incluyen fotos
+  v_id := save_quote(jsonb_build_object('client_id', 'd1000000-0000-4000-8000-000000000004',
+    'items', jsonb_build_array(jsonb_build_object('product_id', 'd4000000-0000-4000-8000-000000000001', 'description', 'Laptop', 'quantity', 1, 'unit_price', 789))));
+  assert (select show_images from v_quotes where id = v_id), 'show_images por defecto';
+  -- se puede apagar al editar, y un save sin la clave no lo cambia
+  perform save_quote(jsonb_build_object('id', v_id, 'client_id', 'd1000000-0000-4000-8000-000000000004', 'show_images', false,
+    'items', jsonb_build_array(jsonb_build_object('description', 'Laptop', 'quantity', 1, 'unit_price', 789))));
+  assert not (select show_images from quotes where id = v_id), 'apagar fotos';
+  perform save_quote(jsonb_build_object('id', v_id, 'client_id', 'd1000000-0000-4000-8000-000000000004',
+    'items', jsonb_build_array(jsonb_build_object('description', 'Laptop', 'quantity', 1, 'unit_price', 789))));
+  assert not (select show_images from quotes where id = v_id), 'save sin la clave conserva';
+  v_dup := duplicate_quote(v_id);
+  assert not (select show_images from quotes where id = v_dup), 'duplicar conserva fotos=no';
+end $$;
+reset role;
+
 -- ---------- 7. Admin ----------
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', false);
 set role authenticated;

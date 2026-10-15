@@ -52,6 +52,7 @@ interface Header {
   internal_notes: string;
   next_action: string;
   next_action_date: string;
+  show_images: boolean;
 }
 
 const key = () => Math.random().toString(36).slice(2);
@@ -120,6 +121,7 @@ export function QuoteEditorPage() {
         internal_notes: quote.internal_notes ?? '',
         next_action: quote.next_action ?? '',
         next_action_date: quote.next_action_date ?? '',
+        show_images: quote.show_images ?? true,
       });
       setLines(
         items.map((i) => ({
@@ -165,6 +167,7 @@ export function QuoteEditorPage() {
         internal_notes: '',
         next_action: '',
         next_action_date: '',
+        show_images: true,
       });
     }
   }, [id, existing.data, settings, header, params, auth.session]);
@@ -570,6 +573,14 @@ export function QuoteEditorPage() {
 
           <Card title="Condiciones y notas">
             <div className="grid gap-4">
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+                <Checkbox
+                  label="Incluir fotos de los productos en el PDF"
+                  checked={header.show_images}
+                  onChange={(e) => set('show_images', e.target.checked)}
+                />
+                <p className="ml-6 mt-0.5 text-xs text-slate-500">Las líneas del catálogo con foto la muestran en miniatura. Las líneas personalizadas salen sin foto.</p>
+              </div>
               <Field label="Notas para el cliente (aparecen en el PDF)">
                 <Textarea value={header.notes} onChange={(e) => set('notes', e.target.value)} />
               </Field>

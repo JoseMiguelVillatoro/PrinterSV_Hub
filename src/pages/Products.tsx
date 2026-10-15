@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History, Plus, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { History, ImagePlus, Link2, Package, Plus, Search, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Card, Checkbox, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { useProducts, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
 import { dateTime, money } from '@/lib/format';
+import { compressImage, removeProductImage, uploadProductImage } from '@/lib/images';
 import { supabase, unwrap } from '@/lib/supabase';
 import type { ItemKind, Product, ProductCost } from '@/lib/types';
 
@@ -34,9 +35,11 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
   const qc = useQueryClient();
   const { data: suppliers } = useSuppliers();
   const [form, setForm] = useState<Draft>(empty);
+  const [photo, setPhoto] = useState<{ blob: Blob; preview: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setPhoto(null);
     if (product) {
       const { id: _i, is_demo: _d, ...rest } = product;
       setForm({ ...empty, ...rest, unit_cost: cost ? String(cost.unit_cost) : '', supplier_id: cost?.supplier_id ?? '' });
@@ -47,6 +50,8 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
     mutationFn: async () => {
       if (!form.sku.trim() || !form.name.trim()) throw new Error('SKU y nombre son obligatorios.');
       const { unit_cost, supplier_id, ...p } = form;
+      // La foto nueva se sube recién al guardar (si se cancela, no queda basura).
+      if (photo) p.image_url = await uploadProductImage(photo.blob);
       const payload = {
         ...p,
         sku: p.sku.trim().toUpperCase(),
@@ -59,6 +64,9 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
       let id = product?.id;
       if (product) await unwrap(supabase.from('products').update(payload).eq('id', product.id));
       else id = ((await unwrap(supabase.from('products').insert(payload).select('id').single())) as { id: string }).id;
+
+      // Si se cambió o quitó una foto que estaba en nuestro espacio, se borra la vieja.
+      if (product?.image_url && product.image_url !== (p.image_url || null)) await removeProductImage(product.image_url);
 
       if (auth.canSeeCosts && id) {
         if (unit_cost.trim() === '') {
@@ -128,9 +136,15 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
         <Field label="Precio de venta (USD, sin IVA)" required>
           <Input type="number" min={0} step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} />
         </Field>
-        <Field label="URL de imagen (opcional)" className="sm:col-span-2">
-          <Input value={form.image_url ?? ''} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://…" />
-        </Field>
+        <ProductPhotoField
+          url={photo?.preview ?? form.image_url ?? ''}
+          onPick={(blob, preview) => setPhoto({ blob, preview })}
+          onUrl={(url) => {
+            setPhoto(null);
+            setForm({ ...form, image_url: url });
+          }}
+          onError={toast.error}
+        />
         <div className="flex flex-wrap gap-6 sm:col-span-2">
           <Checkbox label="Gravado con IVA" checked={form.taxable} onChange={(e) => setForm({ ...form, taxable: e.target.checked })} />
           <Checkbox label="Activo (disponible para cotizar)" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
@@ -155,6 +169,73 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
         )}
       </div>
     </Modal>
+  );
+}
+
+function ProductPhotoField({
+  url,
+  onPick,
+  onUrl,
+  onError,
+}: {
+  url: string;
+  onPick: (blob: Blob, preview: string) => void;
+  onUrl: (url: string) => void;
+  onError: (e: unknown) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [linkMode, setLinkMode] = useState(false);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [url]);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const blob = await compressImage(file);
+      onPick(blob, URL.createObjectURL(blob));
+      setLinkMode(false);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  return (
+    <div className="sm:col-span-2">
+      <span className="mb-1 block text-xs font-medium text-slate-600">Foto (opcional)</span>
+      <div className="flex items-start gap-4">
+        <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          {url && !broken ? (
+            <img src={url} alt="Foto del producto" className="h-full w-full object-contain" onError={() => setBroken(true)} />
+          ) : (
+            <Package className="h-10 w-10 text-slate-300" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" aria-label="Archivo de foto" onChange={(e) => void pick(e.target.files?.[0])} />
+            <Button type="button" variant="secondary" size="sm" loading={busy} icon={<ImagePlus className="h-4 w-4" />} onClick={() => fileRef.current?.click()}>
+              {url ? 'Cambiar foto' : 'Subir foto'}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" icon={<Link2 className="h-4 w-4" />} onClick={() => setLinkMode((v) => !v)}>
+              Pegar enlace
+            </Button>
+            {url && (
+              <Button type="button" variant="ghost" size="sm" icon={<Trash2 className="h-4 w-4" />} onClick={() => onUrl('')}>
+                Quitar
+              </Button>
+            )}
+          </div>
+          {linkMode && <Input autoFocus placeholder="https://…" value={url.startsWith('blob:') ? '' : url} onChange={(e) => onUrl(e.target.value)} />}
+          {broken && <p className="text-xs text-red-600">No se pudo cargar esa imagen. Revisá el enlace.</p>}
+          <p className="text-xs text-slate-500">Desde la compu o el celular (se puede tomar con la cámara). Se achica sola antes de subirla.</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

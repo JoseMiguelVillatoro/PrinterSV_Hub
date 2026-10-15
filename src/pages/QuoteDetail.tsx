@@ -53,8 +53,13 @@ export function QuoteDetailPage() {
         unwrap(supabase.from('tasks').select('*').eq('quote_id', id!).order('due_date')),
         auth.canSeeCosts ? unwrap(supabase.from('v_quote_margins').select('*').eq('quote_id', id!).maybeSingle()) : Promise.resolve(null),
       ]);
+      const productIds = [...new Set((items as QuoteItem[]).map((i) => i.product_id).filter((x): x is string => Boolean(x)))];
+      const photos = productIds.length
+        ? ((await unwrap(supabase.from('products').select('id, image_url').in('id', productIds).not('image_url', 'is', null))) as { id: string; image_url: string }[])
+        : [];
       return {
         quote,
+        productImages: Object.fromEntries(photos.map((p) => [p.id, p.image_url])) as Record<string, string>,
         items: items as QuoteItem[],
         adjustments: adjustments as QuoteAdjustment[],
         events: events as QuoteEvent[],
@@ -193,6 +198,7 @@ export function QuoteDetailPage() {
             <Table>
               <thead>
                 <tr>
+                  {q.show_images && Object.keys(data.productImages).length > 0 && <Th className="w-14" />}
                   <Th>Descripción</Th>
                   <Th className="text-right">Cant.</Th>
                   <Th className="hidden text-right sm:table-cell">Precio</Th>
@@ -203,6 +209,15 @@ export function QuoteDetailPage() {
               <tbody className="divide-y divide-slate-100">
                 {items.map((it) => (
                   <tr key={it.id}>
+                    {q.show_images && Object.keys(data.productImages).length > 0 && (
+                      <Td className="w-14 pr-0">
+                        {it.product_id && data.productImages[it.product_id] ? (
+                          <img src={data.productImages[it.product_id]} alt="" className="h-11 w-11 rounded-md bg-white object-contain ring-1 ring-slate-200" />
+                        ) : (
+                          <span className="block h-11 w-11 rounded-md bg-slate-50 ring-1 ring-slate-100" />
+                        )}
+                      </Td>
+                    )}
                     <Td>
                       <p className="whitespace-pre-line text-slate-800">{it.description}</p>
                       <p className="text-xs text-slate-500">

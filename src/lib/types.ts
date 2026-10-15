@@ -190,6 +190,7 @@ export interface Quote {
   rejection_reason: string | null;
   next_action: string | null;
   next_action_date: string | null;
+  show_images: boolean;
   is_demo: boolean;
   created_at: string;
 }
