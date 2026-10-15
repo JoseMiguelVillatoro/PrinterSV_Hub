@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     return json(409, { error: 'Esta cotización ya está cerrada; no se puede enviar.' });
   }
 
-  const { data: settings } = await caller.from('company_settings').select('company_name, phone, email, website').maybeSingle();
+  const { data: settings } = await caller.from('company_settings').select('company_name, phone, email, website, logo_url').maybeSingle();
   const { data: profile } = await caller.from('profiles').select('full_name, phone').eq('id', user.id).maybeSingle();
   const company = settings?.company_name || 'Printer Computers & Systems';
   const sender = profile?.full_name || user.email || company;
@@ -118,20 +118,42 @@ Deno.serve(async (req) => {
   // 3) Armar el correo
   const msgHtml = esc(message).replace(/\n/g, '<br>');
   const contactBits = [settings?.phone, settings?.email, settings?.website].filter(Boolean).map((s) => esc(String(s))).join(' · ');
-  const html = `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden">
-<tr><td style="background:#0b1e3f;padding:18px 24px;color:#ffffff;font-size:18px;font-weight:bold">${esc(company)}</td></tr>
-<tr><td style="padding:24px;font-size:14px;line-height:1.6">${msgHtml}</td></tr>
-<tr><td style="padding:0 24px 24px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:14px">
-<tr><td style="padding:12px 16px;color:#64748b">Cotización</td><td style="padding:12px 16px;text-align:right;font-weight:bold">${esc(quote.number)}</td></tr>
-<tr><td style="padding:0 16px 12px;color:#64748b">Total</td><td style="padding:0 16px 12px;text-align:right;font-weight:bold">${esc(money(quote.total, quote.currency))}</td></tr>
-${quote.valid_until ? `<tr><td style="padding:0 16px 12px;color:#64748b">Válida hasta</td><td style="padding:0 16px 12px;text-align:right">${esc(String(quote.valid_until).split('-').reverse().join('/'))}</td></tr>` : ''}
-</table>
-<p style="font-size:12px;color:#64748b;margin:12px 0 0">El detalle completo va en el PDF adjunto.</p>
+  // Logo: el de Configuración si tiene URL; si no, el de la app (hub.printercomputers.com/logo.png).
+  const siteUrl = (Deno.env.get('SITE_URL') ?? req.headers.get('origin') ?? 'https://hub.printercomputers.com').replace(/\/$/, '');
+  const logoUrl = settings?.logo_url || `${siteUrl}/logo.png`;
+  // "Printer Computers & Systems" → título grande + "& SYSTEMS" pequeño.
+  const amp = company.indexOf(' & ');
+  const brandMain = amp > 0 ? company.slice(0, amp) : company;
+  const brandSub = amp > 0 ? `&amp; ${esc(company.slice(amp + 3).toUpperCase())}` : '';
+  // Poppins donde el programa de correo la soporta (Apple Mail, iPhone, algunos Android);
+  // en Outlook/Gmail cae en Arial. El bloque mso evita que Outlook use Times New Roman.
+  const FONT = "Poppins,Arial,Helvetica,sans-serif";
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!--[if !mso]><!--><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet"><!--<![endif]-->
+<!--[if mso]><style>body,table,td,p,a,span{font-family:Arial,Helvetica,sans-serif!important}</style><![endif]-->
+</head><body style="margin:0;padding:0;background:#eef2f7;font-family:${FONT};color:#0f172a">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:28px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:${FONT}">
+<tr><td style="padding:22px 28px">
+  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+    <td style="padding-right:14px;vertical-align:middle"><img src="${esc(logoUrl)}" width="54" height="55" alt="Printer" style="display:block;border:0;height:55px;width:auto"></td>
+    <td style="vertical-align:middle;font-family:${FONT}">
+      <div style="font-size:22px;line-height:1.15;font-weight:600;color:#0b1e3f">${esc(brandMain)}</div>
+      ${brandSub ? `<div style="font-size:11px;letter-spacing:2.5px;font-weight:600;color:#2563eb;margin-top:2px">${brandSub}</div>` : ''}
+    </td>
+  </tr></table>
 </td></tr>
-<tr><td style="padding:16px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b">${esc(sender)} · ${esc(company)}${contactBits ? `<br>${contactBits}` : ''}</td></tr>
+<tr><td height="4" style="height:4px;line-height:4px;font-size:0;background-color:#2563eb;background-image:linear-gradient(90deg,#0b1e3f,#2563eb)">&nbsp;</td></tr>
+<tr><td style="padding:26px 28px 8px;font-size:14px;line-height:1.7;color:#1e293b;font-family:${FONT}">${msgHtml}</td></tr>
+<tr><td style="padding:16px 28px 26px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:${FONT}">
+<tr><td style="padding:14px 18px 6px;color:#64748b">Cotización</td><td style="padding:14px 18px 6px;text-align:right;font-weight:600;color:#0b1e3f">${esc(quote.number)}</td></tr>
+<tr><td style="padding:6px 18px;color:#64748b">Total</td><td style="padding:6px 18px;text-align:right;font-weight:600;font-size:20px;color:#0b1e3f">${esc(money(quote.total, quote.currency))}</td></tr>
+${quote.valid_until ? `<tr><td style="padding:6px 18px 14px;color:#64748b">Válida hasta</td><td style="padding:6px 18px 14px;text-align:right;color:#0f172a">${esc(String(quote.valid_until).split('-').reverse().join('/'))}</td></tr>` : '<tr><td colspan="2" style="height:8px"></td></tr>'}
+</table>
+<p style="font-size:12px;color:#64748b;margin:12px 0 0">📎 El detalle completo va en el PDF adjunto.</p>
+</td></tr>
+<tr><td style="padding:18px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#64748b;font-family:${FONT}"><span style="color:#0b1e3f;font-weight:500">${esc(sender)}</span> · ${esc(company)}${contactBits ? `<br>${contactBits}` : ''}</td></tr>
 </table></td></tr></table></body></html>`;
 
   const bcc = body.copy_me && user.email && !to.includes(user.email) && !cc.includes(user.email) ? [user.email] : [];
