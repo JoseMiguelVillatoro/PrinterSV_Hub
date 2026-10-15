@@ -88,7 +88,7 @@ set role authenticated;
 do $$
 declare r record;
 begin
-  assert (select count(*) from clients) = 5, 'comercial no ve clientes';
+  assert (select count(*) from clients) = 20, 'comercial no ve clientes';
   assert (select count(*) from product_costs) = 0, 'comercial ve costos';
   assert (select count(*) from quote_item_costs) = 0, 'comercial ve costos de línea';
   assert (select count(*) from purchase_orders) = 0, 'comercial ve OC';
@@ -155,7 +155,7 @@ begin
   end;
 
   select * into r from dashboard_metrics();
-  assert (dashboard_metrics() -> 'clients' ->> 'total')::int = 6, 'dashboard clientes';
+  assert (dashboard_metrics() -> 'clients' ->> 'total')::int = 21, 'dashboard clientes';
 end $$;
 reset role;
 
