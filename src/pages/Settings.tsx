@@ -299,6 +299,7 @@ interface InviteResult {
   is_new: boolean;
   link: string | null;
   email_sent: boolean;
+  email_via?: 'resend' | 'supabase' | null;
   email_error: string | null;
 }
 
@@ -308,7 +309,7 @@ function InviteModal({ open, email: presetEmail, name: presetName, onClose, onDo
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [roles, setRoles] = useState<AppRole[]>([]);
-  const [sendEmail, setSendEmail] = useState(false);
+  const [sendEmail, setSendEmail] = useState(true);
   const [result, setResult] = useState<InviteResult | null>(null);
 
   useEffect(() => {
@@ -316,7 +317,7 @@ function InviteModal({ open, email: presetEmail, name: presetName, onClose, onDo
     setEmail(presetEmail ?? '');
     setName(presetName ?? '');
     setRoles(presetEmail ? [] : ['comercial']);
-    setSendEmail(false);
+    setSendEmail(true);
     setResult(null);
   }, [open, presetEmail, presetName]);
 
@@ -388,9 +389,10 @@ function InviteModal({ open, email: presetEmail, name: presetName, onClose, onDo
               ))}
             </div>
           </div>
-          <Checkbox label="Enviar también por correo" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
+          <Checkbox label={existing ? 'Enviarle el enlace por correo' : 'Enviarle la invitación por correo'} checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
           <p className="text-xs text-slate-500">
-            El correo usa el servicio de Supabase, que tiene límites mientras no se configure un SMTP propio. El enlace para copiar o mandar por WhatsApp siempre se genera.
+            Le llega un correo de Printer Computers con un botón para {existing ? 'definir su nueva contraseña' : 'crear su contraseña'}. Además, el enlace siempre
+            queda en pantalla para copiarlo o mandarlo por WhatsApp.
           </p>
           {existing && <p className="text-xs text-slate-500">El enlace le permite definir una nueva contraseña. Úsalo si perdió la invitación o la olvidó.</p>}
         </div>
@@ -398,7 +400,7 @@ function InviteModal({ open, email: presetEmail, name: presetName, onClose, onDo
         <div className="space-y-4">
           <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
             {result.is_new ? 'Usuario creado con sus roles.' : 'Enlace generado.'}{' '}
-            {result.email_sent ? 'También se envió por correo.' : ''}
+            {result.email_sent ? `Se le envió un correo a ${email}.` : ''}
           </p>
           {result.email_error && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No se pudo enviar el correo ({result.email_error}). Compartí el enlace manualmente.</p>
