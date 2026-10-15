@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
+import { Compass } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
@@ -6,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Button, Field, Input, Modal } from './ui';
 
 /** "Mi cuenta": cada usuario puede cambiar su nombre y su contraseña. */
-export function AccountModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AccountModal({ open, onClose, onTour }: { open: boolean; onClose: () => void; onTour?: () => void }) {
   const { session, profile, refresh } = useAuth();
   const toast = useToast();
   const email = session?.user.email ?? '';
@@ -99,6 +100,15 @@ export function AccountModal({ open, onClose }: { open: boolean; onClose: () => 
             Cambiar contraseña
           </Button>
         </form>
+
+        {onTour && (
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+            <p className="text-sm text-slate-600">¿Querés volver a ver el recorrido por el sistema?</p>
+            <Button variant="secondary" icon={<Compass className="h-4 w-4" />} onClick={onTour}>
+              Ver tour
+            </Button>
+          </div>
+        )}
       </div>
     </Modal>
   );

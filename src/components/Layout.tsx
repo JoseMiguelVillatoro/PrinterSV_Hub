@@ -15,12 +15,13 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/format';
 import { AccountModal } from './AccountModal';
 import { GlobalSearch } from './GlobalSearch';
+import { Tour, tourDone } from './Tour';
 
 interface NavItem {
   to: string;
@@ -71,6 +72,7 @@ function Sidebar({ onNavigate, onAccount }: { onNavigate?: () => void; onAccount
           <NavLink
             key={n.to}
             to={n.to}
+            data-tour={n.to}
             end={n.to === '/'}
             onClick={onNavigate}
             className={({ isActive }) =>
@@ -96,6 +98,7 @@ function Sidebar({ onNavigate, onAccount }: { onNavigate?: () => void; onAccount
           </div>
         </div>
         <button
+          data-tour="account"
           onClick={() => {
             onNavigate?.();
             onAccount();
@@ -121,6 +124,17 @@ export function Layout() {
   const auth = useAuth();
   const [open, setOpen] = useState(false);
   const [account, setAccount] = useState(false);
+  const [tour, setTour] = useState(false);
+
+  // Primera vez que entra: mostrar el tour. Solo depende del usuario, así que
+  // no se repite al recargar datos; al terminarlo se guarda en su cuenta.
+  const userId = auth.session?.user.id;
+  useEffect(() => {
+    if (!userId || tourDone(auth)) return;
+    const t = setTimeout(() => setTour(true), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (to: string) => (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to));
@@ -150,12 +164,13 @@ export function Layout() {
             <div className="lg:hidden">
               <Brand compact />
             </div>
-            <div className="hidden flex-1 md:block">
+            <div className="hidden flex-1 md:block" data-tour="search">
               <GlobalSearch />
             </div>
             <div className="ml-auto flex items-center gap-2">
               {auth.canManageQuotes && (
                 <button
+                  data-tour="new-quote"
                   onClick={() => navigate('/cotizaciones/nueva')}
                   className="hidden h-9 items-center gap-2 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white shadow-sm hover:bg-brand-600 sm:inline-flex"
                 >
@@ -174,7 +189,7 @@ export function Layout() {
               </button>
             </div>
           </div>
-          <div className="px-4 pb-3 md:hidden">
+          <div className="px-4 pb-3 md:hidden" data-tour="search">
             <GlobalSearch />
           </div>
         </header>
@@ -184,17 +199,26 @@ export function Layout() {
         </main>
       </div>
 
-      <AccountModal open={account} onClose={() => setAccount(false)} />
+      <AccountModal
+        open={account}
+        onClose={() => setAccount(false)}
+        onTour={() => {
+          setAccount(false);
+          setOpen(false);
+          setTour(true);
+        }}
+      />
+      <Tour open={tour} onClose={() => setTour(false)} />
 
       {/* Navegación inferior en móvil */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
         {NAV.filter((n) => MOBILE_TABS.includes(n.to)).map((n) => (
-          <Link key={n.to} to={n.to} className={clsx('flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium', isActive(n.to) ? 'text-brand-600' : 'text-slate-500')}>
+          <Link key={n.to} to={n.to} data-tour={n.to} className={clsx('flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium', isActive(n.to) ? 'text-brand-600' : 'text-slate-500')}>
             {n.icon}
             {n.short ?? n.label}
           </Link>
         ))}
-        <button onClick={() => setOpen(true)} className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-slate-500">
+        <button onClick={() => setOpen(true)} data-tour="account" className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-slate-500">
           <Menu className="h-[18px] w-[18px]" />
           Más
         </button>
