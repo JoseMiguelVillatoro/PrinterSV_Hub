@@ -229,6 +229,7 @@ export interface QuoteAdjustment {
   kind: AdjustmentKind;
   label: string;
   amount: number;
+  percent: number | null;
   taxable: boolean;
 }
 

@@ -151,6 +151,7 @@ export function DashboardPage() {
   const [from, setFrom] = useState(addDaysISO(today, -29));
   const [to, setTo] = useState(today);
   const [includeDemo, setIncludeDemo] = useState(true);
+  const [hover, setHover] = useState<number | null>(null);
 
   const { data: m, isLoading, error } = useQuery({
     queryKey: ['dashboard', from, to, includeDemo],
@@ -236,22 +237,34 @@ export function DashboardPage() {
                   <div className="relative h-44 w-44 shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={donut} dataKey="count" nameKey="label" innerRadius="64%" outerRadius="100%" paddingAngle={2} stroke="none" isAnimationActive={false}>
-                          {donut.map((d) => (
-                            <Cell key={d.status} fill={STATUS_COLOR[d.status]} />
+                        <Pie
+                          data={donut}
+                          dataKey="count"
+                          nameKey="label"
+                          innerRadius="64%"
+                          outerRadius="100%"
+                          paddingAngle={2}
+                          stroke="none"
+                          isAnimationActive={false}
+                          onMouseEnter={(_, idx) => setHover(idx)}
+                          onMouseLeave={() => setHover(null)}
+                        >
+                          {donut.map((d, idx) => (
+                            <Cell key={d.status} fill={STATUS_COLOR[d.status]} opacity={hover === null || hover === idx ? 1 : 0.35} className="cursor-pointer outline-none" />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(v, n) => [`${v}`, n]} />
                       </PieChart>
                     </ResponsiveContainer>
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-3xl font-bold text-navy-900">{donutTotal}</span>
-                      <span className="text-xs text-slate-500">Total</span>
+                    {/* El centro muestra el total, o el estado bajo el cursor (sin tooltip que lo tape) */}
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="text-3xl font-bold text-navy-900">{hover === null ? donutTotal : donut[hover]?.count}</span>
+                      <span className="max-w-[90px] text-xs leading-tight text-slate-500">{hover === null ? 'Total' : donut[hover]?.label}</span>
+                      {hover !== null && donut[hover] && <span className="mt-0.5 text-[11px] font-medium text-slate-600">{money(Number(donut[hover].amount))}</span>}
                     </div>
                   </div>
                   <ul className="w-full space-y-1.5 text-sm">
-                    {donut.map((d) => (
-                      <li key={d.status}>
+                    {donut.map((d, idx) => (
+                      <li key={d.status} onMouseEnter={() => setHover(idx)} onMouseLeave={() => setHover(null)}>
                         <Link to={`/cotizaciones?estado=${d.status}`} className="flex items-center justify-between gap-3 rounded px-1 hover:bg-slate-50">
                           <span className="flex items-center gap-2 text-slate-600">
                             <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR[d.status] }} />

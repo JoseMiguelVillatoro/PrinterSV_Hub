@@ -82,4 +82,21 @@ describe('calcQuote (igual que la base de datos)', () => {
     expect(t.tax_total).toBe(0);
     expect(t.total).toBe(-40);
   });
+
+  it('deducción por porcentaje sobre el neto (igual que la BD)', () => {
+    const t = calcQuote(
+      [
+        { quantity: 2, unit_price: 545, discount_pct: 0, taxable: true },
+        { quantity: 1, unit_price: 12.5, discount_pct: 0, taxable: true },
+      ],
+      [
+        { kind: 'deduccion', amount: 0, percent: 10, taxable: true },
+        { kind: 'cargo', amount: 15, taxable: true },
+      ],
+      13,
+    );
+    expect(t.deductions_total).toBe(110.25);
+    expect(t.taxable_base).toBe(1007.25);
+    expect(t.total).toBe(1138.19);
+  });
 });

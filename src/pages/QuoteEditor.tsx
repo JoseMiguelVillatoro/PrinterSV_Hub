@@ -7,7 +7,7 @@ import { useClientOptions, useContacts, useProducts, useProfiles, useSettings } 
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
 import { QUOTE_EDITABLE, QUOTE_STATUS_LABEL, addDaysISO, money, todayISO } from '@/lib/format';
-import { calcLine, calcQuote } from '@/lib/quoteMath';
+import { adjustmentAmount, calcLine, calcQuote } from '@/lib/quoteMath';
 import { supabase, unwrap } from '@/lib/supabase';
 import type { AdjustmentKind, ItemKind, ProductCost, Quote, QuoteAdjustment, QuoteItem } from '@/lib/types';
 
@@ -31,6 +31,9 @@ interface AdjDraft {
   id?: string;
   kind: AdjustmentKind;
   label: string;
+  /** 'pct' = porcentaje del subtotal neto de líneas; 'monto' = valor fijo */
+  mode: 'pct' | 'monto';
+  percent: number;
   amount: number;
   taxable: boolean;
 }
@@ -134,7 +137,18 @@ export function QuoteEditorPage() {
           unit_cost: ic.has(i.id) ? String(ic.get(i.id)) : '',
         })),
       );
-      setAdjs(adjustments.map((a) => ({ key: key(), id: a.id, kind: a.kind, label: a.label, amount: Number(a.amount), taxable: a.taxable })));
+      setAdjs(
+        adjustments.map((a) => ({
+          key: key(),
+          id: a.id,
+          kind: a.kind,
+          label: a.label,
+          mode: a.percent !== null && a.percent !== undefined ? 'pct' : 'monto',
+          percent: Number(a.percent ?? 0),
+          amount: Number(a.amount),
+          taxable: a.taxable,
+        })),
+      );
     } else if (settings) {
       const today = todayISO();
       setHeader({
@@ -157,7 +171,8 @@ export function QuoteEditorPage() {
 
   const productImg = useMemo(() => new Map((products ?? []).filter((p) => p.image_url).map((p) => [p.id, p.image_url as string])), [products]);
   const costMap = useMemo(() => new Map((costs.data ?? []).map((c) => [c.product_id, c.unit_cost])), [costs.data]);
-  const totals = useMemo(() => calcQuote(lines, adjs, header?.tax_rate ?? 0), [lines, adjs, header?.tax_rate]);
+  const adjInputs = useMemo(() => adjs.map((a) => ({ kind: a.kind, taxable: a.taxable, amount: a.amount, percent: a.mode === 'pct' ? a.percent : null })), [adjs]);
+  const totals = useMemo(() => calcQuote(lines, adjInputs, header?.tax_rate ?? 0), [lines, adjInputs, header?.tax_rate]);
   const marginInfo = useMemo(() => {
     if (!auth.canSeeCosts) return null;
     let cost = 0;
@@ -219,7 +234,11 @@ export function QuoteEditorPage() {
         if (!(l.quantity > 0)) throw new Error(`La línea ${i + 1} debe tener cantidad mayor a 0.`);
         if (l.unit_price < 0) throw new Error(`La línea ${i + 1} tiene precio negativo.`);
       }
-      for (const a of adjs) if (!a.label.trim()) throw new Error('Cada cargo o deducción necesita una descripción.');
+      for (const a of adjs) {
+        if (!a.label.trim()) throw new Error('Cada cargo o deducción necesita una descripción.');
+        if (a.mode === 'pct' && !(a.percent > 0 && a.percent <= 100)) throw new Error(`"${a.label}": el porcentaje debe estar entre 0.01 y 100.`);
+        if (a.mode === 'monto' && a.amount < 0) throw new Error(`"${a.label}": el monto no puede ser negativo.`);
+      }
       if (header.valid_until && header.valid_until < header.issue_date) throw new Error('La vigencia no puede ser anterior a la fecha de emisión.');
 
       const payload = {
@@ -227,7 +246,7 @@ export function QuoteEditorPage() {
         ...header,
         requested_at: header.requested_at ? `${header.requested_at}T12:00:00-06:00` : null,
         items: lines.map(({ key: _k, ...l }) => ({ ...l, unit_cost: auth.canSeeCosts ? l.unit_cost : '' })),
-        adjustments: adjs.map(({ key: _k, ...a }) => a),
+        adjustments: adjs.map(({ key: _k, mode, percent, ...a }) => ({ ...a, percent: mode === 'pct' ? percent : null })),
       };
       return (await unwrap(supabase.rpc('save_quote', { p: payload }))) as string;
     },
@@ -499,33 +518,52 @@ export function QuoteEditorPage() {
             title="Cargos y deducciones"
             actions={
               <>
-                <Button size="sm" variant="secondary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdjs((a) => [...a, { key: key(), kind: 'cargo', label: '', amount: 0, taxable: true }])}>
+                <Button size="sm" variant="secondary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdjs((a) => [...a, { key: key(), kind: 'cargo', label: '', mode: 'monto', percent: 0, amount: 0, taxable: true }])}>
                   Cargo
                 </Button>
-                <Button size="sm" variant="secondary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdjs((a) => [...a, { key: key(), kind: 'deduccion', label: '', amount: 0, taxable: false }])}>
+                <Button size="sm" variant="secondary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdjs((a) => [...a, { key: key(), kind: 'deduccion', label: '', mode: 'pct', percent: 5, amount: 0, taxable: true }])}>
                   Deducción
                 </Button>
               </>
             }
           >
             {adjs.length === 0 ? (
-              <p className="text-sm text-slate-500">Envío, instalación, descuentos globales, anticipos… aparecen por separado en el PDF.</p>
+              <p className="text-sm text-slate-500">Descuentos (por ejemplo 5 %), envío, instalación, anticipos… aparecen por separado en el PDF.</p>
             ) : (
-              <div className="space-y-2">
-                {adjs.map((a) => (
-                  <div key={a.key} className="grid items-end gap-2 sm:grid-cols-[120px_1fr_140px_auto_auto]">
-                    <Select value={a.kind} onChange={(e) => setAdjs((xs) => xs.map((x) => (x.key === a.key ? { ...x, kind: e.target.value as AdjustmentKind } : x)))}>
-                      <option value="cargo">Cargo (+)</option>
-                      <option value="deduccion">Deducción (−)</option>
-                    </Select>
-                    <Input placeholder="Descripción" value={a.label} onChange={(e) => setAdjs((xs) => xs.map((x) => (x.key === a.key ? { ...x, label: e.target.value } : x)))} />
-                    <Input type="number" min={0} step="0.01" value={a.amount} onChange={(e) => setAdjs((xs) => xs.map((x) => (x.key === a.key ? { ...x, amount: Number(e.target.value) } : x)))} />
-                    <Checkbox label="Afecta IVA" checked={a.taxable} onChange={(e) => setAdjs((xs) => xs.map((x) => (x.key === a.key ? { ...x, taxable: e.target.checked } : x)))} />
-                    <button className="mb-2 rounded p-1 text-red-400 hover:bg-red-50" onClick={() => setAdjs((xs) => xs.filter((x) => x.key !== a.key))} aria-label="Eliminar">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                {adjs.map((a) => {
+                  const upd = (patch: Partial<AdjDraft>) => setAdjs((xs) => xs.map((x) => (x.key === a.key ? { ...x, ...patch } : x)));
+                  const value = adjustmentAmount({ kind: a.kind, taxable: a.taxable, amount: a.amount, percent: a.mode === 'pct' ? a.percent : null }, totals.net);
+                  return (
+                    <div key={a.key} className="grid items-center gap-2 rounded-lg border border-slate-100 p-2 sm:grid-cols-[160px_1fr_76px_100px_auto_96px_auto] sm:border-0 sm:p-0">
+                      <Select aria-label="Tipo" value={a.kind} onChange={(e) => upd({ kind: e.target.value as AdjustmentKind })}>
+                        <option value="deduccion">Deducción (−)</option>
+                        <option value="cargo">Cargo (+)</option>
+                      </Select>
+                      <Input aria-label="Descripción del ajuste" placeholder={a.kind === 'deduccion' ? 'Ej.: Descuento por volumen' : 'Ej.: Envío'} value={a.label} onChange={(e) => upd({ label: e.target.value })} />
+                      <Select aria-label="Forma" value={a.mode} onChange={(e) => upd({ mode: e.target.value as AdjDraft['mode'] })}>
+                        <option value="pct">%</option>
+                        <option value="monto">$</option>
+                      </Select>
+                      {a.mode === 'pct' ? (
+                        <Input aria-label="Porcentaje" type="number" min={0} max={100} step="0.01" value={a.percent} onChange={(e) => upd({ percent: Number(e.target.value) })} className="text-right" />
+                      ) : (
+                        <Input aria-label="Monto" type="number" min={0} step="0.01" value={a.amount} onChange={(e) => upd({ amount: Number(e.target.value) })} className="text-right" />
+                      )}
+                      <Checkbox label="Afecta IVA" checked={a.taxable} onChange={(e) => upd({ taxable: e.target.checked })} />
+                      <span className="whitespace-nowrap text-right text-sm font-medium text-navy-900">
+                        {a.kind === 'deduccion' ? '− ' : '+ '}
+                        {money(value)}
+                      </span>
+                      <button className="justify-self-end rounded p-1 text-red-400 hover:bg-red-50" onClick={() => setAdjs((xs) => xs.filter((x) => x.key !== a.key))} aria-label="Eliminar ajuste">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-slate-500">
+                  El porcentaje se calcula sobre el subtotal de las líneas (después de sus descuentos) y se actualiza solo si cambian. Marcá "Afecta IVA" para que el descuento también reduzca el IVA.
+                </p>
               </div>
             )}
           </Card>

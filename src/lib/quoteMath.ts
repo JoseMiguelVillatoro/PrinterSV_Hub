@@ -15,7 +15,15 @@ export interface LineInput {
 export interface AdjustmentInput {
   kind: 'cargo' | 'deduccion';
   amount: number;
+  /** Si viene, el monto es este % del neto de las líneas (igual que en la BD). */
+  percent?: number | null;
   taxable: boolean;
+}
+
+/** Monto efectivo de un cargo/deducción (fijo o porcentual sobre el neto de líneas). */
+export function adjustmentAmount(a: AdjustmentInput, net: number): number {
+  if (a.percent !== null && a.percent !== undefined && String(a.percent) !== '') return round2((net * Number(a.percent)) / 100);
+  return Number(a.amount) || 0;
 }
 
 export interface LineResult {
@@ -64,12 +72,13 @@ export function calcQuote(lines: LineInput[], adjustments: AdjustmentInput[], ta
   const net = sumCents(computed.map((l) => l.line_total));
   const taxableLines = sumCents(computed.filter((l) => l.taxable).map((l) => l.line_total));
 
-  const charges = adjustments.filter((a) => a.kind === 'cargo');
-  const deductions = adjustments.filter((a) => a.kind === 'deduccion');
-  const charges_total = sumCents(charges.map((a) => Number(a.amount) || 0));
-  const deductions_total = sumCents(deductions.map((a) => Number(a.amount) || 0));
-  const taxableCharges = sumCents(charges.filter((a) => a.taxable).map((a) => Number(a.amount) || 0));
-  const taxableDeductions = sumCents(deductions.filter((a) => a.taxable).map((a) => Number(a.amount) || 0));
+  const adj = adjustments.map((a) => ({ ...a, value: adjustmentAmount(a, net) }));
+  const charges = adj.filter((a) => a.kind === 'cargo');
+  const deductions = adj.filter((a) => a.kind === 'deduccion');
+  const charges_total = sumCents(charges.map((a) => a.value));
+  const deductions_total = sumCents(deductions.map((a) => a.value));
+  const taxableCharges = sumCents(charges.filter((a) => a.taxable).map((a) => a.value));
+  const taxableDeductions = sumCents(deductions.filter((a) => a.taxable).map((a) => a.value));
 
   const taxable_base = Math.max(sumCents([taxableLines, taxableCharges, -taxableDeductions]), 0);
   const tax_total = round2((taxable_base * (Number(taxRate) || 0)) / 100);

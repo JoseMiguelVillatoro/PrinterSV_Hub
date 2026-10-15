@@ -338,6 +338,48 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---------- 6c. Cargos/deducciones por porcentaje ----------
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare v_id uuid; v_item uuid; q record;
+begin
+  -- 2 × 545 + 1 × 12.50 = 1102.50 ; 10 % descuento afecta IVA = 110.25 ; envío fijo 15 gravado
+  v_id := save_quote(jsonb_build_object(
+    'client_id', 'd1000000-0000-4000-8000-000000000004',
+    'items', jsonb_build_array(
+      jsonb_build_object('description', 'Desktop', 'quantity', 2, 'unit_price', 545, 'taxable', true),
+      jsonb_build_object('description', 'Licencia', 'quantity', 1, 'unit_price', 12.50, 'taxable', true)),
+    'adjustments', jsonb_build_array(
+      jsonb_build_object('kind', 'deduccion', 'label', 'Descuento', 'percent', 10, 'amount', 0, 'taxable', true),
+      jsonb_build_object('kind', 'cargo', 'label', 'Envío', 'amount', 15, 'taxable', true))
+  ));
+  select * into q from quotes where id = v_id;
+  assert (select amount from quote_adjustments where quote_id = v_id and percent = 10) = 110.25, 'monto del 10 %';
+  -- base = 1102.50 + 15 − 110.25 = 1007.25 ; IVA 130.94 ; total 1007.25 + 130.94 = 1138.19
+  assert q.taxable_base = 1007.25, 'base % ' || q.taxable_base;
+  assert q.total = 1138.19, 'total % ' || q.total;
+
+  -- cambiar cantidades → el monto del % se recalcula solo
+  select id into v_item from quote_items where quote_id = v_id and description = 'Desktop';
+  update quote_items set quantity = 4 where id = v_item;
+  assert (select amount from quote_adjustments where quote_id = v_id and percent = 10) = 219.25, 'recalculo del %';
+
+  -- porcentaje inválido
+  begin
+    perform save_quote(jsonb_build_object('id', v_id, 'client_id', 'd1000000-0000-4000-8000-000000000004',
+      'items', jsonb_build_array(jsonb_build_object('id', v_item, 'description', 'Desktop', 'quantity', 1, 'unit_price', 545)),
+      'adjustments', jsonb_build_array(jsonb_build_object('kind', 'deduccion', 'label', 'X', 'percent', 150))));
+    assert false, 'aceptó 150 %';
+  exception when check_violation then null;
+  end;
+
+  -- duplicar conserva el %
+  v_item := duplicate_quote(v_id);
+  assert (select count(*) from quote_adjustments where quote_id = v_item and percent = 10) = 1, 'duplicar copia el %';
+end $$;
+reset role;
+
 -- ---------- 7. Admin ----------
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', false);
 set role authenticated;

@@ -227,7 +227,8 @@ export function QuoteDetailPage() {
               {adjustments.map((a) => (
                 <div key={a.id} className="flex justify-between gap-3">
                   <dt className="text-slate-500">
-                    {a.kind === 'cargo' ? 'Cargo' : 'Deducción'}: {a.label}
+                    {a.label}
+                    {a.percent ? ` (${num(a.percent, 2)} %)` : ''}
                     {!a.taxable && <span className="text-xs"> (no gravado)</span>}
                   </dt>
                   <dd className="whitespace-nowrap">

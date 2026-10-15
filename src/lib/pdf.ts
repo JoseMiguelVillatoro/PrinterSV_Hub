@@ -173,7 +173,7 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
   if (Number(quote.discount_total) > 0) rows.push(['Descuentos por línea', `- ${money(quote.discount_total, cur)}`]);
   for (const a of adjustments) {
     rows.push([
-      `${a.kind === 'cargo' ? 'Cargo' : 'Deducción'}: ${a.label}${a.taxable ? '' : ' (no gravado)'}`,
+      `${a.label}${a.percent ? ` (${num(a.percent, 2)} %)` : ''}${a.taxable ? '' : ' · no gravado'}`,
       `${a.kind === 'cargo' ? '+' : '-'} ${money(a.amount, cur)}`,
     ]);
   }
@@ -183,7 +183,7 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
 
   const boxW = 250;
   const x0 = W - M - boxW;
-  if (ty + rows.length * 16 + 40 > doc.internal.pageSize.getHeight() - 60) {
+  if (ty + rows.length * 28 + 40 > doc.internal.pageSize.getHeight() - 60) {
     doc.addPage();
     ty = 50;
   }
@@ -200,8 +200,11 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     } else {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(51, 65, 85);
-      doc.text(doc.splitTextToSize(label, boxW - 100), x0 + 10, ty);
+      // Etiquetas largas se parten en varias líneas y el renglón crece en consecuencia
+      const lines = doc.splitTextToSize(label, boxW - 100) as string[];
+      doc.text(lines, x0 + 10, ty);
       doc.text(value, W - M - 10, ty, { align: 'right' });
+      ty += (lines.length - 1) * 11;
     }
     ty += strong ? 26 : 15;
   }
