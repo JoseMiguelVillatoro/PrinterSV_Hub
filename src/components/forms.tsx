@@ -99,7 +99,13 @@ export function ClientFormModal({
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error('El nombre es obligatorio.');
-      const payload = clean(form);
+      const payload: Partial<ClientDraft> = clean(form);
+      // Solo se mandan las coordenadas si hay ubicación (o había y se quitó):
+      // así guardar un cliente funciona aunque la columna aún no exista en la base.
+      if (form.latitude == null && form.longitude == null && client?.latitude == null) {
+        delete payload.latitude;
+        delete payload.longitude;
+      }
       if (client) {
         await unwrap(supabase.from('clients').update(payload).eq('id', client.id));
         return client.id;
