@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
 import { dateTime, money } from '@/lib/format';
 import { compressImage, removeProductImage, uploadProductImage } from '@/lib/images';
+import { DeleteDialog } from '@/components/DeleteDialog';
 import { supabase, unwrap } from '@/lib/supabase';
 import type { ItemKind, Product, ProductCost } from '@/lib/types';
 
@@ -36,6 +37,7 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
   const { data: suppliers } = useSuppliers();
   const [form, setForm] = useState<Draft>(empty);
   const [photo, setPhoto] = useState<{ blob: Blob; preview: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +101,11 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
       title={product ? 'Editar producto/servicio' : 'Nuevo producto/servicio'}
       footer={
         <>
+          {product && auth.isAdmin && (
+            <Button variant="ghost" className="mr-auto text-red-600 hover:bg-red-50" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDeleting(true)}>
+              Eliminar
+            </Button>
+          )}
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
@@ -108,6 +115,26 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
         </>
       }
     >
+      {product && (
+        <DeleteDialog
+          open={deleting}
+          onClose={() => setDeleting(false)}
+          kind="product"
+          id={product.id}
+          name={product.name}
+          onDeleted={() => {
+            void removeProductImage(product.image_url);
+            void qc.invalidateQueries({ queryKey: ['products'] });
+            onClose();
+          }}
+          archiveHint={product.is_active ? { label: 'Desactivar', onArchive: () => void supabase.from('products').update({ is_active: false }).eq('id', product.id).then(({ error }) => {
+            if (error) return toast.error(error.message);
+            toast.success('Desactivado: ya no aparece para cotizar');
+            void qc.invalidateQueries({ queryKey: ['products'] });
+            onClose();
+          }) } : undefined}
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="SKU" required>
           <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />

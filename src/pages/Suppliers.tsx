@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Checkbox, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
+import { useAuth } from '@/lib/auth';
+import { DeleteDialog } from '@/components/DeleteDialog';
 import { supabase, unwrap } from '@/lib/supabase';
 import type { Supplier } from '@/lib/types';
 
@@ -69,6 +71,8 @@ function SupplierModal({ open, supplier, onClose }: { open: boolean; supplier: S
   const toast = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState({ name: '', contact_name: '', email: '', phone: '', notes: '', is_active: true });
+  const [deleting, setDeleting] = useState(false);
+  const { isAdmin } = useAuth();
   useEffect(() => {
     if (open)
       setForm({
@@ -100,11 +104,37 @@ function SupplierModal({ open, supplier, onClose }: { open: boolean; supplier: S
       onClose={onClose}
       title={supplier ? 'Editar proveedor' : 'Nuevo proveedor'}
       footer={
-        <Button loading={m.isPending} onClick={() => m.mutate()}>
-          Guardar
-        </Button>
+        <>
+          {supplier && isAdmin && (
+            <Button variant="ghost" className="mr-auto text-red-600 hover:bg-red-50" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDeleting(true)}>
+              Eliminar
+            </Button>
+          )}
+          <Button loading={m.isPending} onClick={() => m.mutate()}>
+            Guardar
+          </Button>
+        </>
       }
     >
+      {supplier && (
+        <DeleteDialog
+          open={deleting}
+          onClose={() => setDeleting(false)}
+          kind="supplier"
+          id={supplier.id}
+          name={supplier.name}
+          onDeleted={() => {
+            void qc.invalidateQueries({ queryKey: ['suppliers'] });
+            onClose();
+          }}
+          archiveHint={supplier.is_active ? { label: 'Desactivar', onArchive: () => void supabase.from('suppliers').update({ is_active: false }).eq('id', supplier.id).then(({ error }) => {
+            if (error) return toast.error(error.message);
+            toast.success('Proveedor desactivado');
+            void qc.invalidateQueries({ queryKey: ['suppliers'] });
+            onClose();
+          }) } : undefined}
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nombre" required className="sm:col-span-2">
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

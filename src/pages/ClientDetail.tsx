@@ -1,11 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarPlus, ExternalLink, FilePlus2, ListPlus, MapPin, Navigation, Pencil, UserPlus } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, ArchiveRestore, ArrowLeft, CalendarPlus, ExternalLink, Trash2, FilePlus2, ListPlus, MapPin, Navigation, Pencil, UserPlus } from 'lucide-react';
 import { Suspense, lazy, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { initials } from '@/components/Layout';
+import { DeleteDialog } from '@/components/DeleteDialog';
+import { MoreMenu } from '@/components/MoreMenu';
 import { ClientFormModal, ContactFormModal, TaskFormModal, VisitFormModal } from '@/components/forms';
 import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Spinner } from '@/components/ui';
 import { profileName, useProfiles } from '@/hooks/data';
+import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
 import { googleDirectionsUrl, googleMapsUrl, wazeUrl } from '@/lib/maps';
 import {
@@ -87,6 +90,22 @@ export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const auth = useAuth();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+  const archive = useMutation({
+    mutationFn: async (status: 'inactivo' | 'activo') => {
+      const { error } = await supabase.from('clients').update({ status }).eq('id', id!);
+      if (error) throw new Error(error.message);
+      return status;
+    },
+    onSuccess: (st) => {
+      toast.success(st === 'inactivo' ? 'Cliente archivado (Inactivo)' : 'Cliente reactivado');
+      void qc.invalidateQueries({ queryKey: ['client'] });
+      void qc.invalidateQueries({ queryKey: ['clients'] });
+    },
+    onError: toast.error,
+  });
   const { data: profiles } = useProfiles();
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState<Tab>('resumen');
@@ -167,6 +186,14 @@ export function ClientDetailPage() {
                 Nueva cotización
               </Button>
             )}
+            <MoreMenu
+              size="sm"
+              items={[
+                { label: 'Archivar (Inactivo)', icon: <Archive className="h-4 w-4" />, onClick: () => archive.mutate('inactivo'), hidden: client.status === 'inactivo' },
+                { label: 'Reactivar', icon: <ArchiveRestore className="h-4 w-4" />, onClick: () => archive.mutate('activo'), hidden: client.status !== 'inactivo' },
+                { label: 'Eliminar cliente', icon: <Trash2 className="h-4 w-4" />, onClick: () => setDeleting(true), danger: true, hidden: !auth.isAdmin },
+              ]}
+            />
           </div>
         </div>
         <div className="grid grid-cols-3 border-t border-slate-100 text-center sm:hidden">
@@ -359,6 +386,18 @@ export function ClientDetailPage() {
         </div>
       </div>
 
+      <DeleteDialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        kind="client"
+        id={client.id}
+        name={client.name}
+        onDeleted={() => {
+          void qc.invalidateQueries({ queryKey: ['clients'] });
+          navigate('/clientes');
+        }}
+        archiveHint={client.status !== 'inactivo' ? { label: 'Archivar (Inactivo)', onArchive: () => archive.mutate('inactivo') } : undefined}
+      />
       <ClientFormModal open={editing} onClose={() => setEditing(false)} client={client} />
       <ContactFormModal open={contactModal.open} contact={contactModal.contact} clientId={client.id} onClose={() => setContactModal({ open: false })} />
       <VisitFormModal open={visitModal.open} visit={visitModal.visit} defaultClientId={client.id} onClose={() => setVisitModal({ open: false })} />

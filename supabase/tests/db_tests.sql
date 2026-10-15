@@ -430,6 +430,53 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---------- 7b. Eliminar sin perder historial ----------
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000002', false);
+set role authenticated;
+do $$ begin
+  assert not (delete_check('product', 'd4000000-0000-4000-8000-000000000001') ->> 'ok')::boolean, 'comercial no puede eliminar';
+  begin
+    perform delete_record('client', 'd1000000-0000-4000-8000-000000000001');
+    assert false, 'comercial eliminó';
+  exception when raise_exception then null;
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', false);
+set role authenticated;
+do $$
+declare v_client uuid; v_prod uuid; v_sup uuid; v_q uuid; v_sent uuid;
+begin
+  -- con historial: no se borra
+  assert not (delete_check('client', 'd1000000-0000-4000-8000-000000000001') ->> 'ok')::boolean, 'cliente con cotizaciones';
+  begin perform delete_record('client', 'd1000000-0000-4000-8000-000000000001'); assert false, 'borró cliente con historial';
+  exception when raise_exception then null; end;
+  assert not (delete_check('product', 'd4000000-0000-4000-8000-000000000001') ->> 'ok')::boolean, 'producto usado';
+  -- sin historial: se borra con lo suyo
+  insert into clients (name) values ('Borrar Test') returning id into v_client;
+  insert into contacts (client_id, full_name) values (v_client, 'Contacto X');
+  assert (delete_check('client', v_client) ->> 'ok')::boolean, 'cliente sin historial';
+  perform delete_record('client', v_client);
+  assert not exists (select 1 from clients where id = v_client), 'cliente borrado';
+  assert not exists (select 1 from contacts where client_id = v_client), 'contactos borrados';
+  insert into products (sku, name, sale_price) values ('DEL-1', 'Borrar', 1) returning id into v_prod;
+  perform delete_record('product', v_prod);
+  assert not exists (select 1 from products where id = v_prod), 'producto borrado';
+  insert into suppliers (name) values ('Prov borrar') returning id into v_sup;
+  perform delete_record('supplier', v_sup);
+  assert not exists (select 1 from suppliers where id = v_sup), 'proveedor borrado';
+  -- cotizaciones: solo borrador
+  v_q := save_quote(jsonb_build_object('client_id', 'd1000000-0000-4000-8000-000000000004',
+    'items', jsonb_build_array(jsonb_build_object('description', 'X', 'quantity', 1, 'unit_price', 1))));
+  perform delete_record('quote', v_q);
+  assert not exists (select 1 from quotes where id = v_q), 'borrador borrado';
+  select id into v_sent from quotes where status = 'enviada' limit 1;
+  begin perform delete_record('quote', v_sent); assert false, 'borró una enviada';
+  exception when raise_exception then null; end;
+  assert exists (select 1 from audit_log where action = 'delete' and table_name = 'clients'), 'auditoría del borrado';
+end $$;
+reset role;
+
 -- ---------- 8. Numeración bajo muchas inserciones ----------
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
 set role authenticated;

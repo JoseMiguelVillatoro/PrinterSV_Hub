@@ -28,7 +28,7 @@ export function ClientsPage() {
     const s = search.trim().toLowerCase();
     return (data ?? []).filter(
       (c) =>
-        (!status || c.status === status) &&
+        (status ? c.status === status : c.status !== 'inactivo') &&
         (!owner || c.owner_id === owner) &&
         (!s || [c.name, c.legal_name, c.email, c.city, c.industry].some((v) => v?.toLowerCase().includes(s))),
     );
@@ -38,7 +38,11 @@ export function ClientsPage() {
     <>
       <PageHeader
         title="Clientes"
-        subtitle={data ? `${data.length} registrados · ${data.filter((c) => c.status === 'prospecto').length} prospectos` : undefined}
+        subtitle={
+          data
+            ? `${data.filter((c) => c.status !== 'inactivo').length} activos y prospectos · ${data.filter((c) => c.status === 'inactivo').length} archivados (inactivos)`
+            : undefined
+        }
         actions={
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
             Nuevo cliente
@@ -52,10 +56,10 @@ export function ClientsPage() {
             <Input className="pl-9" placeholder="Buscar por nombre, correo, ciudad…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={status} onChange={(e) => setStatus(e.target.value as ClientStatus | '')}>
-            <option value="">Todos los estados</option>
+            <option value="">Activos y prospectos</option>
             {Object.entries(CLIENT_STATUS_LABEL).map(([k, v]) => (
               <option key={k} value={k}>
-                {v}
+                {k === 'inactivo' ? 'Inactivos (archivados)' : v}
               </option>
             ))}
           </Select>

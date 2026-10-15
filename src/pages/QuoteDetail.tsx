@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardCheck, Copy, Download, Eye, FileDown, Mail, MessageSquarePlus, Pencil, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, Copy, Download, Eye, FileDown, Mail, MessageSquarePlus, Pencil, RefreshCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { DeleteDialog } from '@/components/DeleteDialog';
+import { MoreMenu } from '@/components/MoreMenu';
 import { TaskFormModal } from '@/components/forms';
 import { EMAIL_ALLOWED, QuoteEmailModal } from '@/components/QuoteEmailModal';
 import { Badge, Button, Card, Checkbox, DemoBadge, ErrorBox, Field, Input, Modal, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
@@ -39,6 +41,7 @@ export function QuoteDetailPage() {
   const [orderModal, setOrderModal] = useState(false);
   const [taskModal, setTaskModal] = useState(false);
   const [emailModal, setEmailModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['quote', id],
@@ -150,10 +153,7 @@ export function QuoteDetailPage() {
             {q.title && ` · ${q.title}`} · Responsable: {q.owner_name ?? '—'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" icon={<Eye className="h-4 w-4" />} loading={pdfLoading} onClick={previewPdf}>
-            Vista previa
-          </Button>
+        <div className="flex flex-wrap gap-2 lg:shrink-0 lg:justify-end">
           <Button variant="secondary" icon={<FileDown className="h-4 w-4" />} loading={pdfLoading} onClick={downloadPdf}>
             PDF
           </Button>
@@ -167,11 +167,13 @@ export function QuoteDetailPage() {
               Editar
             </Button>
           )}
-          {auth.canManageQuotes && (
-            <Button variant="secondary" icon={<Copy className="h-4 w-4" />} loading={duplicate.isPending} onClick={() => duplicate.mutate()}>
-              Duplicar
-            </Button>
-          )}
+          <MoreMenu
+            items={[
+              { label: 'Vista previa del PDF', icon: <Eye className="h-4 w-4" />, onClick: () => void previewPdf() },
+              { label: 'Duplicar', icon: <Copy className="h-4 w-4" />, onClick: () => duplicate.mutate(), hidden: !auth.canManageQuotes, disabled: duplicate.isPending },
+              { label: 'Eliminar borrador', icon: <Trash2 className="h-4 w-4" />, onClick: () => setDeleting(true), danger: true, hidden: !(auth.isAdmin && q.status === 'borrador') },
+            ]}
+          />
           {transitions.length > 0 && (
             <Button icon={<RefreshCcw className="h-4 w-4" />} onClick={() => setStatusModal(true)}>
               Cambiar estado
@@ -446,6 +448,17 @@ export function QuoteDetailPage() {
         onEmail={() => {
           setStatusModal(false);
           setEmailModal(true);
+        }}
+      />
+      <DeleteDialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        kind="quote"
+        id={q.id}
+        name={q.number}
+        onDeleted={() => {
+          invalidate();
+          navigate('/cotizaciones');
         }}
       />
       <QuoteEmailModal
