@@ -498,7 +498,8 @@ declare v_po uuid; i1 uuid; i2 uuid; r purchase_orders;
 begin
   insert into purchase_orders (number, supplier_id, tax_rate, payment_terms) values ('', 'd3000000-0000-4000-8000-000000000001', 13, 'Crédito 30 días') returning id into v_po;
   insert into purchase_order_items (purchase_order_id, description, quantity, unit_cost) values (v_po, 'A', 10, 100) returning id into i1;
-  insert into purchase_order_items (purchase_order_id, description, quantity, unit_cost) values (v_po, 'B', 2, 50.5) returning id into i2;
+  insert into purchase_order_items (purchase_order_id, product_id, description, quantity, unit_cost) values (v_po, 'd4000000-0000-4000-8000-000000000005', 'B', 2, 50.5) returning id into i2;
+  assert (select order_id from purchase_orders where id = v_po) is null, 'OC general sin pedido';
   select * into r from purchase_orders where id = v_po;
   assert r.number like 'PR-OC-%', 'número OC';
   assert r.total_cost = 1101 and r.tax_total = 143.13 and r.grand_total = 1244.13, format('totales OC %s %s %s', r.total_cost, r.tax_total, r.grand_total);

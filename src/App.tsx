@@ -17,6 +17,7 @@ import { ReportsPage } from './pages/Reports';
 import { SetPasswordPage } from './pages/SetPassword';
 import { SettingsPage } from './pages/Settings';
 import { SuppliersPage } from './pages/Suppliers';
+import { PurchasesPage } from './pages/Purchases';
 
 function NoAccess() {
   const { signOut, session } = useAuth();
@@ -57,6 +58,7 @@ export function App() {
         <Route path="pedidos" element={<OrdersPage />} />
         <Route path="pedidos/:id" element={<OrderDetailPage />} />
         <Route path="productos" element={<ProductsPage />} />
+        <Route path="compras" element={auth.canSeeCosts ? <PurchasesPage /> : <Navigate to="/" />} />
         <Route path="proveedores" element={auth.canSeeCosts ? <SuppliersPage /> : <Navigate to="/" />} />
         <Route path="reportes" element={<ReportsPage />} />
         <Route path="configuracion" element={auth.isAdmin ? <SettingsPage /> : <Navigate to="/" />} />

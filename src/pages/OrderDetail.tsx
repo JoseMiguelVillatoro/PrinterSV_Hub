@@ -293,7 +293,11 @@ export function OrderDetailPage() {
                 </ul>
               )}
               <p className="mt-3 text-xs text-slate-500">
-                Abrí una OC para descargar el PDF, enviarla al proveedor o registrar lo recibido. Las etapas de arriba (compra / recepción del pedido) se actualizan aparte para que quede registrado quién y cuándo.
+                Abrí una OC para descargar el PDF, enviarla al proveedor o registrar lo recibido. Todas las OC (también las generales) están en{' '}
+                <Link to="/compras" className="text-brand-600 hover:underline">
+                  Compras
+                </Link>
+                . Las etapas de arriba (compra / recepción del pedido) se actualizan aparte para que quede registrado quién y cuándo.
               </p>
             </Card>
           )}
@@ -504,7 +508,7 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
     setTaxRate(Number(settings?.default_tax_rate ?? 13));
     setDelivery(settings?.address ?? '');
   }, [open, settings]);
-  const [lines, setLines] = useState<(Pick<PurchaseOrderItem, 'description' | 'quantity' | 'unit_cost'> & { order_item_id: string; include: boolean })[]>([]);
+  const [lines, setLines] = useState<(Pick<PurchaseOrderItem, 'description' | 'quantity' | 'unit_cost'> & { order_item_id: string; product_id: string | null; include: boolean })[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -521,7 +525,7 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
             const pid = productOf.get(it.id);
             const c = pid ? cm.get(pid) : undefined;
             if (c?.supplier_id) setSupplier((s) => s || c.supplier_id!);
-            return { order_item_id: it.id, description: it.description, quantity: Number(it.quantity), unit_cost: c ? Number(c.unit_cost) : 0, include: true };
+            return { order_item_id: it.id, product_id: pid ?? null, description: it.description, quantity: Number(it.quantity), unit_cost: c ? Number(c.unit_cost) : 0, include: true };
           }),
         );
       });
@@ -550,7 +554,7 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
       )) as { id: string };
       await unwrap(
         supabase.from('purchase_order_items').insert(
-          chosen.map((l) => ({ purchase_order_id: po.id, order_item_id: l.order_item_id, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost })),
+          chosen.map((l) => ({ purchase_order_id: po.id, order_item_id: l.order_item_id, product_id: l.product_id, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost })),
         ),
       );
       return po.id;

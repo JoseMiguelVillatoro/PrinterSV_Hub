@@ -65,6 +65,7 @@ La migración `…0011_client_location.sql` agrega `latitude`/`longitude` a clie
 La migración `…0014_purchase_order_docs.sql` agrega IVA, condiciones de pago, dirección de entrega y recepción por línea
 (`receive_purchase_order`). El PDF usa el mismo diseño que las cotizaciones. Para enviarlas por correo, publicar la función
 `send-purchase-order` (usa los mismos secretos de Resend que `send-quote-email`).
+La página **Compras** lista todas las OC y permite crear OC generales (sin pedido); `…0015_po_general.sql` liga cada línea a su producto.
 
 ### 3. Frontend
 ```bash

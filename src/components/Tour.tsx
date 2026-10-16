@@ -43,8 +43,14 @@ const STEPS: Step[] = [
   },
   {
     target: '/pedidos',
-    title: 'Pedidos y compras',
+    title: 'Pedidos y entregas',
     body: 'Cuando una cotización se acepta, se convierte en pedido. Aquí se controla compra, recepción, preparación y entrega por separado.',
+  },
+  {
+    target: '/compras',
+    title: 'Compras',
+    body: 'Todas las órdenes de compra a proveedores, de un pedido o generales (bodega, repuestos, insumos): PDF, envío por correo y recepción.',
+    show: (a) => a.canSeeCosts,
   },
   { target: '/productos', title: 'Productos y servicios', body: 'El catálogo para cotizar, con historial de precios por cliente.' },
   { target: '/reportes', title: 'Reportes', body: 'Historial de precios, desempeño por responsable y motivos de rechazo. Todo se exporta a CSV.' },
