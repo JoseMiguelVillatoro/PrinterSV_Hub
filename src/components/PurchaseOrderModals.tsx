@@ -107,7 +107,9 @@ export function PurchaseOrderDetailModal({
       return status;
     },
     onSuccess: (st) => {
-      toast.success(st === 'cancelada' ? 'Orden de compra cancelada' : `Marcada como "${PO_STATUS_LABEL[st!]}"`);
+      toast.success(
+        st === 'cancelada' ? 'Orden de compra cancelada' : `Marcada como "${PO_STATUS_LABEL[st!]}"${st === 'enviada' && po?.order_id ? ' · Compra del pedido: Solicitada' : ''}`,
+      );
       refresh();
     },
     onError: toast.error,
@@ -122,7 +124,7 @@ export function PurchaseOrderDetailModal({
         }),
       ) as Promise<PurchaseOrder>,
     onSuccess: (r) => {
-      toast.success(`Recepción guardada · ${PO_STATUS_LABEL[r.status]}`);
+      toast.success(`Recepción guardada · OC ${PO_STATUS_LABEL[r.status]}${po?.order_id ? ' · Pedido actualizado' : ''}`);
       refresh();
     },
     onError: toast.error,
@@ -263,8 +265,10 @@ export function PurchaseOrderDetailModal({
               </dl>
             </div>
             {canReceive && (
-              <p className="text-xs text-slate-500">
-                Al recibir todo, la OC pasa sola a "Recibida". La etapa "Recepción" del pedido se marca aparte (arriba en el pedido) para que quede quién y cuándo.
+              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                <b>Cuando llegue la mercadería:</b> en la columna "Recibido" anotá cuántas unidades llegaron de cada línea (o tocá "Recibí todo") y luego{' '}
+                <b>Guardar recepción</b>. La OC pasa sola a "Recibida parcial" o "Recibida"
+                {po.order_id ? ', y la Compra y la Recepción del pedido se actualizan solas.' : '.'}
               </p>
             )}
             {po.notes && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Notas: {po.notes}</p>}

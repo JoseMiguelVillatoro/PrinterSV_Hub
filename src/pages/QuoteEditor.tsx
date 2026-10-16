@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowLeft, ArrowUp, PackagePlus, PenLine, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Button, Card, Checkbox, ErrorBox, Field, Input, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
+import { Button, Card, Checkbox, ErrorBox, Field, Input, MoneyInput, PageHeader, Select, Spinner, Textarea } from '@/components/ui';
 import { useClientOptions, useContacts, useProducts, useProfiles, useSettings } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
@@ -244,9 +244,11 @@ export function QuoteEditorPage() {
       }
       if (header.valid_until && header.valid_until < header.issue_date) throw new Error('La vigencia no puede ser anterior a la fecha de emisión.');
 
+      const { tax_rate: _taxRate, ...headerData } = header;
       const payload = {
         id: id ?? null,
-        ...header,
+        // El IVA no se manda: al crear, la base de datos usa el de Configuración; al editar, se conserva.
+        ...headerData,
         requested_at: header.requested_at ? `${header.requested_at}T12:00:00-06:00` : null,
         items: lines.map(({ key: _k, ...l }) => ({ ...l, unit_cost: auth.canSeeCosts ? l.unit_cost : '' })),
         adjustments: adjs.map(({ key: _k, mode, percent, ...a }) => ({ ...a, percent: mode === 'pct' ? percent : null })),
@@ -336,8 +338,8 @@ export function QuoteEditorPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="IVA (%)" hint="Configurable por cotización">
-                <Input type="number" min={0} max={100} step="0.01" value={header.tax_rate} onChange={(e) => set('tax_rate', Number(e.target.value))} />
+              <Field label="IVA (%)" hint="Fijo para todas las cotizaciones. Lo cambia un Administrador en Configuración.">
+                <Input value={`${header.tax_rate} %`} readOnly disabled aria-label="IVA de la cotización" />
               </Field>
             </div>
           </Card>
@@ -420,7 +422,7 @@ export function QuoteEditorPage() {
                             )}
                           </td>
                           <td className="py-2 pr-2"><Input className="min-w-[64px] px-2 text-right" aria-label="Cantidad" type="number" min={0} step="any" value={l.quantity} onChange={(e) => updLine(l.key, { quantity: Number(e.target.value) })} /></td>
-                          <td className="py-2 pr-2"><Input className="min-w-[88px] px-2 text-right" aria-label="Precio unit." type="number" min={0} step="0.01" value={l.unit_price} onChange={(e) => updLine(l.key, { unit_price: Number(e.target.value) })} /></td>
+                          <td className="py-2 pr-2"><MoneyInput className="min-w-[96px] pr-2" aria-label="Precio unit." value={l.unit_price} onChange={(e) => updLine(l.key, { unit_price: Number(e.target.value) })} /></td>
                           <td className="py-2 pr-2"><Input className="min-w-[60px] px-2 text-right" aria-label="Desc. %" type="number" min={0} max={100} step="0.01" value={l.discount_pct} onChange={(e) => updLine(l.key, { discount_pct: Number(e.target.value) })} /></td>
                           {auth.canSeeCosts && (
                             <td className="py-2 pr-2"><Input aria-label="Costo unit." type="number" min={0} step="0.01" value={l.unit_cost} onChange={(e) => updLine(l.key, { unit_cost: e.target.value })} className="min-w-[84px] bg-amber-50/60 px-2 text-right" /></td>
@@ -488,7 +490,7 @@ export function QuoteEditorPage() {
                           <Input value={l.unit} onChange={(e) => updLine(l.key, { unit: e.target.value })} />
                         </Field>
                         <Field label="Precio unit.">
-                          <Input type="number" min={0} step="0.01" value={l.unit_price} onChange={(e) => updLine(l.key, { unit_price: Number(e.target.value) })} />
+                          <MoneyInput value={l.unit_price} onChange={(e) => updLine(l.key, { unit_price: Number(e.target.value) })} />
                         </Field>
                         <Field label="Desc. %">
                           <Input type="number" min={0} max={100} step="0.01" value={l.discount_pct} onChange={(e) => updLine(l.key, { discount_pct: Number(e.target.value) })} />
@@ -551,7 +553,7 @@ export function QuoteEditorPage() {
                       {a.mode === 'pct' ? (
                         <Input aria-label="Porcentaje" type="number" min={0} max={100} step="0.01" value={a.percent} onChange={(e) => upd({ percent: Number(e.target.value) })} className="text-right" />
                       ) : (
-                        <Input aria-label="Monto" type="number" min={0} step="0.01" value={a.amount} onChange={(e) => upd({ amount: Number(e.target.value) })} className="text-right" />
+                        <MoneyInput aria-label="Monto" value={a.amount} onChange={(e) => upd({ amount: Number(e.target.value) })} />
                       )}
                       <Checkbox label="Afecta IVA" checked={a.taxable} onChange={(e) => upd({ taxable: e.target.checked })} />
                       <span className="whitespace-nowrap text-right text-sm font-medium text-navy-900">

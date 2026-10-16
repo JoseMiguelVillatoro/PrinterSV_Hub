@@ -52,6 +52,16 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   return <input ref={ref} className={clsx(fieldBase, 'h-10', className)} {...rest} />;
 });
 
+/** Campo de dinero: muestra "$" a la izquierda y alinea el número a la derecha. */
+export const MoneyInput = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>>(function MoneyInput({ className, ...rest }, ref) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">$</span>
+      <input ref={ref} type="number" min={0} step="0.01" inputMode="decimal" className={clsx(fieldBase, 'h-10 pl-7 text-right tabular-nums', className)} {...rest} />
+    </div>
+  );
+});
+
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
   { className, children, ...rest },
   ref,

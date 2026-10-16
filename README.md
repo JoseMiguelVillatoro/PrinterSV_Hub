@@ -107,8 +107,11 @@ no lo recibe ni siquiera consultando la API directamente.
   `src/lib/quoteMath.ts` replica la fórmula solo para la vista previa (probada contra los mismos casos).
 - **Estados de cotización** solo vía `change_quote_status()` con transiciones válidas; rechazo exige motivo; aceptada/rechazada/cancelada quedan bloqueadas.
 - **Aceptar no crea ni avanza el pedido.** `convert_quote_to_order()` crea el pedido conservando el vínculo con la cotización (1 a 1).
-- **Compra, recepción, preparación y entrega** son etapas independientes vía `update_order_stage()`, con trazabilidad (quién/cuándo/comentario).
-  No se puede recibir sin comprar, entregar sin preparar, ni cerrar sin entregar.
+- **Compra → recepción → preparación → entrega** son etapas consecutivas vía `update_order_stage()`, con trazabilidad (quién/cuándo/comentario).
+  No se puede recibir sin comprar, preparar sin recibir, entregar sin preparar, ni cerrar sin entregar. Las etapas solo avanzan;
+  retroceder es una corrección solo para Admin, con motivo (`…0016_order_stage_rules.sql`). Enviar/recibir una OC del pedido actualiza
+  Compra y Recepción solas.
+- **IVA de cotizaciones:** fijo, tomado de Configuración (13 %).
 - **Auditoría** de cambios en clientes, productos, costos, cotizaciones, pedidos, roles y configuración.
 - **Envío:** "Enviada" se registra al mandarla por correo desde el Hub (Resend) o, si se envió por fuera (PDF por correo/WhatsApp), con "Ya la mandé yo".
 

@@ -525,6 +525,74 @@ begin
 end $$;
 reset role;
 
+-- ---------- 7d. Etapas consecutivas, sin retroceso, y OC → pedido ----------
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare v_q uuid; v_o uuid; v_po uuid; v_i uuid; o orders;
+begin
+  v_q := save_quote(jsonb_build_object('client_id', 'd1000000-0000-4000-8000-000000000004',
+    'items', jsonb_build_array(jsonb_build_object('product_id', 'd4000000-0000-4000-8000-000000000003', 'description', 'Monitor', 'quantity', 4, 'unit_price', 139))));
+  perform change_quote_status(v_q, 'enviada');
+  perform change_quote_status(v_q, 'aceptada');
+  v_o := convert_quote_to_order(v_q, true, current_date + 5, null);
+
+  -- no se puede preparar ni programar entrega sin mercadería
+  begin perform update_order_stage(v_o, 'preparacion', 'en_proceso'); assert false, 'preparó sin recepción';
+  exception when raise_exception then null; end;
+  begin perform update_order_stage(v_o, 'entrega', 'programada'); assert false, 'programó sin preparación';
+  exception when raise_exception then null; end;
+
+  -- OC del pedido: enviar → Compra Solicitada
+  insert into purchase_orders (number, order_id, supplier_id) values ('', v_o, 'd3000000-0000-4000-8000-000000000001') returning id into v_po;
+  insert into purchase_order_items (purchase_order_id, description, quantity, unit_cost) values (v_po, 'Monitor', 4, 102) returning id into v_i;
+  update purchase_orders set status = 'enviada' where id = v_po;
+  assert (select purchase_status from orders where id = v_o) = 'solicitada', 'OC enviada → compra solicitada';
+
+  -- recibir parcial → Comprada + Recepción parcial ; preparar "en proceso" ya se puede, "lista" todavía no
+  perform receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', v_i, 'quantity_received', 2)));
+  select * into o from orders where id = v_o;
+  assert o.purchase_status = 'comprada' and o.reception_status = 'parcial', 'recepción parcial sincronizada';
+  perform update_order_stage(v_o, 'preparacion', 'en_proceso');
+  begin perform update_order_stage(v_o, 'preparacion', 'lista'); assert false, 'lista con recepción parcial';
+  exception when raise_exception then null; end;
+
+  -- recibir todo → Recepción Recibida
+  perform receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', v_i, 'quantity_received', 4)));
+  assert (select reception_status from orders where id = v_o) = 'recibida', 'recepción completa sincronizada';
+  assert (select count(*) from order_events where order_id = v_o and comment like 'Automático:%') = 4, 'eventos automáticos';
+
+  -- deshacer la recepción de la OC NO hace retroceder al pedido
+  perform receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', v_i, 'quantity_received', 0)));
+  assert (select reception_status from orders where id = v_o) = 'recibida', 'el pedido no retrocede solo';
+
+  perform update_order_stage(v_o, 'preparacion', 'lista');
+  perform update_order_stage(v_o, 'entrega', 'programada', null, current_date + 1);
+
+  -- operaciones no puede retroceder
+  begin perform update_order_stage(v_o, 'entrega', 'pendiente', 'error'); assert false, 'ops retrocedió';
+  exception when raise_exception then null; end;
+  perform set_config('test.order', v_o::text, false);
+end $$;
+reset role;
+
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000001', false);
+set role authenticated;
+do $$
+declare v_o uuid := current_setting('test.order')::uuid;
+begin
+  -- admin: retroceder exige motivo
+  begin perform update_order_stage(v_o, 'entrega', 'pendiente'); assert false, 'retrocedió sin motivo';
+  exception when raise_exception then null; end;
+  -- y no puede saltarse etapas posteriores ya iniciadas
+  begin perform update_order_stage(v_o, 'preparacion', 'en_proceso', 'error de captura'); assert false, 'corrigió preparación con entrega iniciada';
+  exception when raise_exception then null; end;
+  perform update_order_stage(v_o, 'entrega', 'pendiente', 'se programó por error');
+  perform update_order_stage(v_o, 'preparacion', 'en_proceso', 'faltó revisar');
+  assert (select count(*) from order_events where order_id = v_o and comment like 'Corrección:%') = 2, 'correcciones registradas';
+end $$;
+reset role;
+
 -- ---------- 8. Numeración bajo muchas inserciones ----------
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
 set role authenticated;

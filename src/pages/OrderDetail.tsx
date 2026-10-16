@@ -3,7 +3,8 @@ import clsx from 'clsx';
 import { ArrowLeft, Check, ChevronRight, PackageCheck, Plus, ShoppingCart, Truck, Wrench } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Badge, Button, Card, DemoBadge, ErrorBox, Field, Input, Modal, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { Badge, Button, Card, DemoBadge, ErrorBox, Field, Input, Modal, MoneyInput, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { backwardOptions, forwardOptions, isBackward, type FlowStage } from '@/lib/orderStages';
 import { PAYMENT_TERMS, PO_STATUS_TONE, PurchaseOrderDetailModal } from '@/components/PurchaseOrderModals';
 import { profileName, useProfiles, useSettings, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
@@ -50,7 +51,10 @@ function StageCard({
   label,
   date,
   disabled,
-  options,
+  forward,
+  backward,
+  labels,
+  waiting,
   onChange,
 }: {
   icon: ReactNode;
@@ -59,12 +63,17 @@ function StageCard({
   label: string;
   date?: string | null;
   disabled?: boolean;
-  options: [string, string][];
+  forward: { value: string; blocked: string | null }[];
+  backward: string[];
+  labels: Record<string, string>;
+  /** Texto cuando la etapa todavía no puede avanzar (esperando la anterior). */
+  waiting?: string | null;
   onChange: (v: string) => void;
 }) {
   const done = ['comprada', 'recibida', 'lista', 'entregada', 'no_aplica'].includes(value);
+  const available = forward.filter((f) => !f.blocked);
   return (
-    <div className={clsx('rounded-xl border p-4', done ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white')}>
+    <div className={clsx('rounded-xl border p-4', done ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white')} data-testid={`stage-${title}`}>
       <div className="flex items-center gap-2 text-sm font-semibold text-navy-900">
         <span className={clsx('rounded-lg p-1.5', done ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-50 text-brand-600')}>{done ? <Check className="h-4 w-4" /> : icon}</span>
         {title}
@@ -73,18 +82,30 @@ function StageCard({
         <Badge tone={stageTone(value)}>{label}</Badge>
         {date && <p className="mt-1 text-xs text-slate-500">{dateTime(date)}</p>}
       </div>
-      {!disabled && (
-        <Select className="mt-3 h-9" value="" onChange={(e) => e.target.value && onChange(e.target.value)}>
-          <option value="">Actualizar…</option>
-          {options
-            .filter(([k]) => k !== value)
-            .map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
+      {!disabled && (available.length > 0 || backward.length > 0) && (
+        <Select aria-label={`Actualizar ${title}`} className="mt-3 h-9" value="" onChange={(e) => e.target.value && onChange(e.target.value)}>
+          <option value="">{available.length ? 'Avanzar a…' : 'Corregir…'}</option>
+          {available.length > 0 && (
+            <optgroup label="Avanzar">
+              {available.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {labels[f.value]}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {backward.length > 0 && (
+            <optgroup label="Corregir (retroceder, solo Admin)">
+              {backward.map((v) => (
+                <option key={v} value={v}>
+                  ↩ {labels[v]}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </Select>
       )}
+      {!disabled && waiting && <p className="mt-2 text-xs text-amber-700">{waiting}</p>}
     </div>
   );
 }
@@ -123,7 +144,16 @@ export function OrderDetailPage() {
   if (error || !data) return <ErrorBox error={error ?? 'Pedido no encontrado'} />;
   const { order: o, items, events, pos } = data;
   const locked = !auth.canManageQuotes || o.status !== 'abierto';
-  const opts = (m: Record<string, string>, exclude: string[] = []) => Object.entries(m).filter(([k]) => !exclude.includes(k));
+  // Cada etapa ofrece solo lo que se puede hacer (mismas reglas que la base de datos)
+  const stageProps = (st: FlowStage) => {
+    const fwd = forwardOptions(o, st);
+    const allBlocked = fwd.length > 0 && fwd.every((f) => f.blocked);
+    return {
+      forward: fwd,
+      backward: auth.isAdmin ? backwardOptions(o, st) : [],
+      waiting: allBlocked ? fwd[0].blocked : null,
+    };
+  };
 
   return (
     <>
@@ -175,7 +205,8 @@ export function OrderDetailPage() {
           label={PURCHASE_LABEL[o.purchase_status]}
           date={o.purchased_at}
           disabled={locked || !o.requires_purchase}
-          options={opts(PURCHASE_LABEL, ['no_aplica'])}
+          labels={PURCHASE_LABEL}
+          {...stageProps('compra')}
           onChange={(v) => setPending({ stage: 'compra', value: v })}
         />
         <StageCard
@@ -185,7 +216,8 @@ export function OrderDetailPage() {
           label={RECEPTION_LABEL[o.reception_status]}
           date={o.received_at}
           disabled={locked || !o.requires_purchase}
-          options={opts(RECEPTION_LABEL, ['no_aplica'])}
+          labels={RECEPTION_LABEL}
+          {...stageProps('recepcion')}
           onChange={(v) => setPending({ stage: 'recepcion', value: v })}
         />
         <StageCard
@@ -195,7 +227,8 @@ export function OrderDetailPage() {
           label={PREPARATION_LABEL[o.preparation_status]}
           date={o.prepared_at}
           disabled={locked}
-          options={opts(PREPARATION_LABEL)}
+          labels={PREPARATION_LABEL}
+          {...stageProps('preparacion')}
           onChange={(v) => setPending({ stage: 'preparacion', value: v })}
         />
         <StageCard
@@ -205,7 +238,8 @@ export function OrderDetailPage() {
           label={`${DELIVERY_LABEL[o.delivery_status]}${o.delivery_status === 'programada' && o.delivery_scheduled_for ? ` · ${dateOnly(o.delivery_scheduled_for)}` : ''}`}
           date={o.delivered_at}
           disabled={locked}
-          options={opts(DELIVERY_LABEL)}
+          labels={DELIVERY_LABEL}
+          {...stageProps('entrega')}
           onChange={(v) => setPending({ stage: 'entrega', value: v })}
         />
       </div>
@@ -404,23 +438,29 @@ function StageModal({ pending, order, onClose, onDone }: { pending: { stage: Sta
   });
   if (!pending) return null;
   const label = LABELS[pending.stage]?.[pending.value] ?? pending.value;
+  const back = pending.stage !== 'estado' && isBackward(order, pending.stage as FlowStage, pending.value);
   return (
     <Modal
       open
       onClose={onClose}
-      title={`${STAGE_TITLE[pending.stage]}: ${label}`}
+      title={back ? `Corregir ${STAGE_TITLE[pending.stage]}: volver a ${label}` : `${STAGE_TITLE[pending.stage]}: ${label}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={m.isPending} onClick={() => m.mutate()}>
-            Confirmar
+          <Button loading={m.isPending} disabled={back && !comment.trim()} onClick={() => m.mutate()}>
+            {back ? 'Corregir' : 'Confirmar'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        {back && (
+          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            Las etapas normalmente solo avanzan. Esto es una corrección de un error y queda registrada con tu nombre y el motivo.
+          </p>
+        )}
         {pending.stage === 'entrega' && pending.value === 'programada' && (
           <Field label="Fecha programada">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -431,7 +471,7 @@ function StageModal({ pending, order, onClose, onDone }: { pending: { stage: Sta
             <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
           </Field>
         )}
-        <Field label="Comentario (queda en la trazabilidad)">
+        <Field label={back ? 'Motivo de la corrección' : 'Comentario (queda en la trazabilidad)'} required={back}>
           <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
         </Field>
       </div>
@@ -615,12 +655,40 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
           </Field>
         </div>
         <div className="space-y-2">
+          <div className="hidden grid-cols-[auto_1fr_90px_130px_100px] gap-2 px-1 text-xs font-medium text-slate-500 sm:grid">
+            <span className="w-4" />
+            <span>Línea del pedido</span>
+            <span className="text-right">Cantidad</span>
+            <span className="text-right">Costo unit. (sin IVA)</span>
+            <span className="text-right">Total</span>
+          </div>
           {lines.map((l, i) => (
-            <div key={l.order_item_id} className="grid items-center gap-2 sm:grid-cols-[auto_1fr_90px_110px]">
-              <input type="checkbox" checked={l.include} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, include: e.target.checked } : x)))} />
+            <div key={l.order_item_id} className={`grid grid-cols-[auto_1fr] items-center gap-2 sm:grid-cols-[auto_1fr_90px_130px_100px] ${l.include ? '' : 'opacity-50'}`}>
+              <input
+                type="checkbox"
+                aria-label={`Incluir ${l.description}`}
+                className="h-4 w-4 rounded border-slate-300 text-brand-500"
+                checked={l.include}
+                onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, include: e.target.checked } : x)))}
+              />
               <span className="text-sm">{l.description}</span>
-              <Input type="number" min={0} step="any" value={l.quantity} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, quantity: Number(e.target.value) } : x)))} />
-              <Input type="number" min={0} step="0.01" value={l.unit_cost} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, unit_cost: Number(e.target.value) } : x)))} />
+              <Input
+                aria-label={`Cantidad de ${l.description}`}
+                type="number"
+                min={0}
+                step="any"
+                className="col-start-2 text-right sm:col-start-auto"
+                value={l.quantity}
+                onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, quantity: Number(e.target.value) } : x)))}
+              />
+              <div className="col-start-2 sm:col-start-auto">
+                <MoneyInput
+                  aria-label={`Costo unitario de ${l.description}`}
+                  value={l.unit_cost}
+                  onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, unit_cost: Number(e.target.value) } : x)))}
+                />
+              </div>
+              <span className="col-start-2 text-right text-sm font-medium tabular-nums sm:col-start-auto">{money(l.quantity * l.unit_cost)}</span>
             </div>
           ))}
           {(() => {

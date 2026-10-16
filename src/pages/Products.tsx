@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, ImagePlus, Link2, Package, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Badge, Button, Card, Checkbox, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { useProducts, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
@@ -161,7 +161,7 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
           <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
         </Field>
         <Field label="Precio de venta (USD, sin IVA)" required>
-          <Input type="number" min={0} step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} />
+          <MoneyInput value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} />
         </Field>
         <ProductPhotoField
           url={photo?.preview ?? form.image_url ?? ''}
@@ -180,7 +180,7 @@ function ProductModal({ open, onClose, product, cost }: { open: boolean; onClose
           <div className="grid gap-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4 sm:col-span-2 sm:grid-cols-2">
             <p className="text-xs font-medium text-amber-800 sm:col-span-2">Información restringida (solo Administración y Operaciones)</p>
             <Field label="Costo unitario" hint={margin !== null ? `Margen: ${margin.toFixed(1)} %` : undefined}>
-              <Input type="number" min={0} step="0.01" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} />
+              <MoneyInput value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} />
             </Field>
             <Field label="Proveedor habitual">
               <Select value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>

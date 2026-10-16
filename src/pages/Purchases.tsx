@@ -3,7 +3,7 @@ import { PackagePlus, PenLine, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PAYMENT_TERMS, PO_STATUS_TONE, PurchaseOrderDetailModal } from '@/components/PurchaseOrderModals';
-import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
+import { Badge, Button, Card, DemoBadge, EmptyState, ErrorBox, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { useProducts, useSettings, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { PO_STATUS_LABEL, dateOnly, money, todayISO } from '@/lib/format';
@@ -335,7 +335,7 @@ function GeneralPurchaseOrderModal({ open, onClose, onCreated }: { open: boolean
               <div className="hidden grid-cols-[1fr_90px_120px_110px_32px] gap-2 px-1 text-xs font-medium text-slate-500 sm:grid">
                 <span>Descripción</span>
                 <span className="text-right">Cantidad</span>
-                <span className="text-right">Costo unit.</span>
+                <span className="text-right">Costo unit. (sin IVA)</span>
                 <span className="text-right">Total</span>
                 <span />
               </div>
@@ -349,7 +349,7 @@ function GeneralPurchaseOrderModal({ open, onClose, onCreated }: { open: boolean
                     onChange={(e) => upd(l.key, { description: e.target.value })}
                   />
                   <Input aria-label="Cantidad" type="number" min={0} step="any" className="text-right" value={l.quantity} onChange={(e) => upd(l.key, { quantity: Number(e.target.value) })} />
-                  <Input aria-label="Costo unitario" type="number" min={0} step="0.01" className="text-right" value={l.unit_cost} onChange={(e) => upd(l.key, { unit_cost: Number(e.target.value) })} />
+                  <MoneyInput aria-label="Costo unitario" value={l.unit_cost} onChange={(e) => upd(l.key, { unit_cost: Number(e.target.value) })} />
                   <span className="text-right text-sm font-medium">{money(l.quantity * l.unit_cost)}</span>
                   <button type="button" aria-label="Quitar línea" className="justify-self-end text-slate-400 hover:text-red-600" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>
                     <Trash2 className="h-4 w-4" />
