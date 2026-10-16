@@ -479,6 +479,51 @@ begin
 end $$;
 reset role;
 
+-- ---------- 7c. Órdenes de compra: IVA y recepción por línea ----------
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000002', false);
+set role authenticated;
+do $$ begin
+  assert (select count(*) from purchase_orders) = 0, 'comercial no ve OC';
+  begin
+    perform receive_purchase_order('d8000000-0000-4000-8000-000000000001', '[]');
+    assert false, 'comercial recibió OC';
+  exception when raise_exception then null;
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare v_po uuid; i1 uuid; i2 uuid; r purchase_orders;
+begin
+  insert into purchase_orders (number, supplier_id, tax_rate, payment_terms) values ('', 'd3000000-0000-4000-8000-000000000001', 13, 'Crédito 30 días') returning id into v_po;
+  insert into purchase_order_items (purchase_order_id, description, quantity, unit_cost) values (v_po, 'A', 10, 100) returning id into i1;
+  insert into purchase_order_items (purchase_order_id, description, quantity, unit_cost) values (v_po, 'B', 2, 50.5) returning id into i2;
+  select * into r from purchase_orders where id = v_po;
+  assert r.number like 'PR-OC-%', 'número OC';
+  assert r.total_cost = 1101 and r.tax_total = 143.13 and r.grand_total = 1244.13, format('totales OC %s %s %s', r.total_cost, r.tax_total, r.grand_total);
+  -- en borrador no se recibe
+  begin
+    perform receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', i1, 'quantity_received', 1)));
+    assert false, 'recibió en borrador';
+  exception when raise_exception then null;
+  end;
+  update purchase_orders set status = 'enviada', ordered_at = current_date where id = v_po;
+  r := receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', i1, 'quantity_received', 8)));
+  assert r.status = 'recibida_parcial' and r.received_at is null, 'parcial';
+  -- no se puede recibir más de lo pedido (se topa)
+  r := receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', i1, 'quantity_received', 99), jsonb_build_object('id', i2, 'quantity_received', 2)));
+  assert r.status = 'recibida' and r.received_at is not null, 'completa';
+  assert (select quantity_received from purchase_order_items where id = i1) = 10, 'tope a lo pedido';
+  -- volver a 0 regresa a enviada
+  r := receive_purchase_order(v_po, jsonb_build_array(jsonb_build_object('id', i1, 'quantity_received', 0), jsonb_build_object('id', i2, 'quantity_received', 0)));
+  assert r.status = 'enviada', 'deshacer recepción';
+  -- IVA 0
+  update purchase_orders set tax_rate = 0 where id = v_po;
+  assert (select grand_total from purchase_orders where id = v_po) = 1101, 'sin IVA';
+end $$;
+reset role;
+
 -- ---------- 8. Numeración bajo muchas inserciones ----------
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-4000-8000-000000000003', false);
 set role authenticated;

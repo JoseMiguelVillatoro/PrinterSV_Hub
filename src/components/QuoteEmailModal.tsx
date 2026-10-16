@@ -15,31 +15,31 @@ export const EMAIL_MARKS_SENT = ['borrador', 'pendiente_envio', 'vencida'] as co
 /** Estados en los que se puede (re)enviar por correo. */
 export const EMAIL_ALLOWED = [...EMAIL_MARKS_SENT, 'enviada', 'negociacion'] as const;
 
-const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
-const splitEmails = (s: string) =>
+export const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
+export const splitEmails = (s: string) =>
   s
     .split(/[,;\s]+/)
     .map((x) => x.trim())
     .filter(Boolean);
 
-const NOT_ENABLED =
-  'El envío por correo todavía no está activado en Supabase (falta publicar la función "send-quote-email" o el secreto de Resend). Mientras tanto, descargá el PDF y marcala como enviada.';
+const notEnabled = (fn: string) =>
+  `El envío por correo todavía no está activado en Supabase (falta publicar la función "${fn}" o el secreto de Resend). Mientras tanto, descargá el PDF y mandalo por tu cuenta.`;
 
-async function functionError(error: unknown): Promise<string> {
+export async function functionError(error: unknown, fn = 'send-quote-email'): Promise<string> {
   if (error instanceof FunctionsHttpError) {
     const ctx = error.context as Response;
     if (ctx.status === 404) {
       const detail = await ctx.clone().json().catch(() => null);
-      return detail?.error && !/function/i.test(detail.error) ? detail.error : NOT_ENABLED;
+      return detail?.error && !/function/i.test(detail.error) ? detail.error : notEnabled(fn);
     }
     const detail = await ctx.json().catch(() => null);
     return detail?.error ?? error.message;
   }
-  if (error instanceof FunctionsFetchError || error instanceof FunctionsRelayError) return NOT_ENABLED;
+  if (error instanceof FunctionsFetchError || error instanceof FunctionsRelayError) return notEnabled(fn);
   return error instanceof Error ? error.message : String(error);
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
+export function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).split(',')[1] ?? '');

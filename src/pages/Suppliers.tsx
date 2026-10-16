@@ -70,7 +70,7 @@ export function SuppliersPage() {
 function SupplierModal({ open, supplier, onClose }: { open: boolean; supplier: Supplier | null; onClose: () => void }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ name: '', contact_name: '', email: '', phone: '', notes: '', is_active: true });
+  const [form, setForm] = useState({ name: '', contact_name: '', email: '', phone: '', tax_id: '', address: '', notes: '', is_active: true });
   const [deleting, setDeleting] = useState(false);
   const { isAdmin } = useAuth();
   useEffect(() => {
@@ -80,6 +80,8 @@ function SupplierModal({ open, supplier, onClose }: { open: boolean; supplier: S
         contact_name: supplier?.contact_name ?? '',
         email: supplier?.email ?? '',
         phone: supplier?.phone ?? '',
+        tax_id: supplier?.tax_id ?? '',
+        address: supplier?.address ?? '',
         notes: supplier?.notes ?? '',
         is_active: supplier?.is_active ?? true,
       });
@@ -145,8 +147,14 @@ function SupplierModal({ open, supplier, onClose }: { open: boolean; supplier: S
         <Field label="Teléfono">
           <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
-        <Field label="Correo" className="sm:col-span-2">
-          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <Field label="Correo" className="sm:col-span-2" hint="Aquí se envían las órdenes de compra.">
+          <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        </Field>
+        <Field label="NIT">
+          <Input value={form.tax_id} onChange={(e) => setForm({ ...form, tax_id: e.target.value })} />
+        </Field>
+        <Field label="Dirección">
+          <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </Field>
         <Field label="Notas" className="sm:col-span-2">
           <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />

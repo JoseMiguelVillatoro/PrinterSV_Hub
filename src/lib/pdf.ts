@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { dateOnly, money, num } from './format';
-import type { Client, CompanySettings, Contact, Quote, QuoteAdjustment, QuoteItem } from './types';
+import type { Client, CompanySettings, Contact, PurchaseOrder, PurchaseOrderItem, Quote, QuoteAdjustment, QuoteItem, Supplier } from './types';
 
 const NAVY: [number, number, number] = [11, 27, 63];
 const BLUE: [number, number, number] = [29, 111, 232];
@@ -56,25 +56,14 @@ async function loadImage(url: string, maxPx: number, format: 'PNG' | 'JPEG'): Pr
   }
 }
 
-export interface QuotePdfData {
-  quote: Quote;
-  items: QuoteItem[];
-  adjustments: QuoteAdjustment[];
-  client: Client;
-  contact: Contact | null;
-  settings: CompanySettings;
-  ownerName?: string | null;
-  /** product_id → URL de la foto del catálogo (solo se usa si quote.show_images). */
-  productImages?: Record<string, string>;
-}
-
-/** Genera el PDF de una cotización. Usa los totales guardados en la base de datos. */
-export async function buildQuotePdf({ quote, items, adjustments, client, contact, settings, ownerName, productImages }: QuotePdfData): Promise<jsPDF> {
-  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
+/**
+ * Encabezado común de los documentos (cotización, orden de compra): franja, logo,
+ * datos de la empresa y, a la derecha, título, número y datos del documento.
+ * Devuelve la altura (y) donde puede empezar el contenido.
+ */
+async function drawDocHeader(doc: jsPDF, settings: CompanySettings, title: string, number: string, meta: string[]): Promise<number> {
   const W = doc.internal.pageSize.getWidth();
   const M = 40;
-  const cur = quote.currency;
-
   // Franja superior
   doc.setFillColor(...NAVY);
   doc.rect(0, 0, W, 6, 'F');
@@ -83,15 +72,8 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
 
   // Logo (configurado o el de la marca incluido en la app) + nombre
   let y = 36;
-  // Fotos de las líneas (en paralelo con el logo)
-  const photoUrls = quote.show_images && productImages ? productImages : {};
-  const photosPromise = Promise.all(
-    items.map((it) => (it.product_id && photoUrls[it.product_id] ? loadImage(photoUrls[it.product_id], 180, 'JPEG') : Promise.resolve(null))),
-  );
   const customLogo = settings.logo_url ? await loadImage(settings.logo_url, 400, 'PNG') : null;
   const logo = customLogo ?? (await loadImage(DEFAULT_LOGO, 160, 'PNG'));
-  const photos = await photosPromise;
-  const withPhotos = photos.some(Boolean);
   if (customLogo) {
     const h = 48;
     const w = Math.min((customLogo.w / customLogo.h) * h, 190);
@@ -125,22 +107,79 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(...NAVY);
-  doc.text('COTIZACIÓN', W - M, y + 12, { align: 'right' });
+  doc.text(title, W - M, y + 12, { align: 'right' });
   doc.setFontSize(11);
   doc.setTextColor(...BLUE);
-  doc.text(`No. ${quote.number}`, W - M, y + 30, { align: 'right' });
+  doc.text(`No. ${number}`, W - M, y + 30, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...GRAY);
   doc.text(
-    [`Fecha: ${dateOnly(quote.issue_date)}`, `Válida hasta: ${dateOnly(quote.valid_until)}`, ownerName ? `Atendido por: ${ownerName}` : ''].filter(Boolean),
+    meta.filter(Boolean),
     W - M,
     y + 48,
     { align: 'right' },
   );
 
+  return Math.max(y + 54 + companyLines.length * 11, 130) + 14;
+}
+
+/** Pie común en cada página: leyenda, contacto y "No. · Página x de y". */
+function drawDocFooter(doc: jsPDF, settings: CompanySettings, legend: string, number: string) {
+  const W = doc.internal.pageSize.getWidth();
+  const M = 40;
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    const H = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(226, 232, 240);
+    doc.line(M, H - 36, W - M, H - 36);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...GRAY);
+    doc.text(legend, M, H - 24);
+    const contactLine = [settings.phone, settings.email, settings.website].filter(Boolean).join('   ·   ');
+    if (contactLine) {
+      doc.setTextColor(...BLUE);
+      doc.text(contactLine, M, H - 13);
+    }
+    doc.text(`${number} · Página ${p} de ${pages}`, W - M, H - 24, { align: 'right' });
+  }
+}
+
+export interface QuotePdfData {
+  quote: Quote;
+  items: QuoteItem[];
+  adjustments: QuoteAdjustment[];
+  client: Client;
+  contact: Contact | null;
+  settings: CompanySettings;
+  ownerName?: string | null;
+  /** product_id → URL de la foto del catálogo (solo se usa si quote.show_images). */
+  productImages?: Record<string, string>;
+}
+
+/** Genera el PDF de una cotización. Usa los totales guardados en la base de datos. */
+export async function buildQuotePdf({ quote, items, adjustments, client, contact, settings, ownerName, productImages }: QuotePdfData): Promise<jsPDF> {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 40;
+  const cur = quote.currency;
+
+  // Fotos de las líneas (en paralelo con el logo)
+  const photoUrls = quote.show_images && productImages ? productImages : {};
+  const photosPromise = Promise.all(
+    items.map((it) => (it.product_id && photoUrls[it.product_id] ? loadImage(photoUrls[it.product_id], 180, 'JPEG') : Promise.resolve(null))),
+  );
+  const photos = await photosPromise;
+  const withPhotos = photos.some(Boolean);
+  let y = await drawDocHeader(doc, settings, 'COTIZACIÓN', quote.number, [
+    `Fecha: ${dateOnly(quote.issue_date)}`,
+    `Válida hasta: ${dateOnly(quote.valid_until)}`,
+    ownerName ? `Atendido por: ${ownerName}` : '',
+  ]);
+
   // Cliente
-  y = Math.max(y + 54 + companyLines.length * 11, 130) + 14;
   doc.setDrawColor(226, 232, 240);
   doc.setFillColor(248, 250, 252);
   doc.roundedRect(M, y, W - 2 * M, 64, 6, 6, 'FD');
@@ -289,24 +328,164 @@ export async function buildQuotePdf({ quote, items, adjustments, client, contact
     ny += 22 + lines.length * 11;
   }
 
-  // Pie en cada página
-  const pages = doc.getNumberOfPages();
-  for (let p = 1; p <= pages; p++) {
-    doc.setPage(p);
-    const H = doc.internal.pageSize.getHeight();
+  drawDocFooter(doc, settings, settings.quote_footer ?? 'Este documento es una cotización comercial y no constituye una factura fiscal.', quote.number);
+
+  return doc;
+}
+
+// ---------------------------------------------------------------------
+// Orden de compra (para el proveedor)
+// ---------------------------------------------------------------------
+export interface PurchaseOrderPdfData {
+  po: PurchaseOrder;
+  items: PurchaseOrderItem[];
+  supplier: Supplier;
+  settings: CompanySettings;
+  /** Número del pedido interno (referencia; el proveedor no ve datos del cliente). */
+  orderNumber?: string | null;
+  authorName?: string | null;
+}
+
+/** PDF de una orden de compra con el mismo diseño que las cotizaciones. Totales tomados de la base de datos. */
+export async function buildPurchaseOrderPdf({ po, items, supplier, settings, orderNumber, authorName }: PurchaseOrderPdfData): Promise<jsPDF> {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 40;
+
+  let y = await drawDocHeader(doc, settings, 'ORDEN DE COMPRA', po.number, [
+    `Fecha: ${dateOnly(po.ordered_at ?? po.created_at.slice(0, 10))}`,
+    po.expected_at ? `Entrega esperada: ${dateOnly(po.expected_at)}` : '',
+    orderNumber ? `Ref. interna: ${orderNumber}` : '',
+    authorName ? `Elaborada por: ${authorName}` : '',
+  ]);
+
+  // Dos cajas: proveedor | entregar y facturar
+  const boxW = (W - 2 * M - 12) / 2;
+  const boxH = 84;
+  const box = (x: number, title: string, heading: string, lines: string[]) => {
     doc.setDrawColor(226, 232, 240);
-    doc.line(M, H - 36, W - M, H - 36);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(x, y, boxW, boxH, 6, 6, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     doc.setTextColor(...GRAY);
-    doc.text(settings.quote_footer ?? 'Este documento es una cotización comercial y no constituye una factura fiscal.', M, H - 24);
-    const contactLine = [settings.phone, settings.email, settings.website].filter(Boolean).join('   ·   ');
-    if (contactLine) {
-      doc.setTextColor(...BLUE);
-      doc.text(contactLine, M, H - 13);
+    doc.text(title, x + 12, y + 16);
+    doc.setFontSize(11);
+    doc.setTextColor(...NAVY);
+    doc.text(doc.splitTextToSize(heading, boxW - 24)[0] as string, x + 12, y + 31);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+    const wrapped = lines.filter(Boolean).flatMap((l) => doc.splitTextToSize(l, boxW - 24) as string[]).slice(0, 4);
+    doc.text(wrapped, x + 12, y + 45);
+  };
+  box(M, 'PROVEEDOR', supplier.name, [
+    supplier.tax_id ? `NIT: ${supplier.tax_id}` : '',
+    supplier.address ?? '',
+    [supplier.contact_name && `Atención: ${supplier.contact_name}`, supplier.phone].filter(Boolean).join(' · '),
+    supplier.email ?? '',
+  ]);
+  box(M + boxW + 12, 'ENTREGAR Y FACTURAR A', settings.legal_name || settings.company_name, [
+    [settings.tax_id && `NIT: ${settings.tax_id}`, settings.nrc && `NRC: ${settings.nrc}`].filter(Boolean).join('   '),
+    `Entrega: ${po.delivery_address || settings.address || 'Coordinar con Printer'}`,
+    `Condiciones de pago: ${po.payment_terms || 'A convenir'}`,
+  ]);
+  y += boxH + 18;
+
+  // Líneas
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'Descripción', 'Cantidad', 'Costo unit.', 'Total']],
+    body: items.map((it, i) => [
+      String(i + 1),
+      it.description,
+      num(it.quantity, 3),
+      money(it.unit_cost),
+      money(Math.round(Number(it.quantity) * Number(it.unit_cost) * 100) / 100),
+    ]),
+    margin: { left: M, right: M },
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 5, textColor: [30, 41, 59], lineColor: [226, 232, 240], lineWidth: 0.5 },
+    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { cellWidth: 22, halign: 'center' },
+      2: { halign: 'right', cellWidth: 64 },
+      3: { halign: 'right', cellWidth: 78 },
+      4: { halign: 'right', cellWidth: 84 },
+    },
+  });
+
+  // Totales
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ty = (doc as any).lastAutoTable.finalY + 14;
+  const rows: [string, string, boolean?][] = [
+    ['Subtotal', money(po.total_cost)],
+    [`IVA (${num(po.tax_rate, 2)} %)`, money(po.tax_total)],
+    ['TOTAL', money(po.grand_total), true],
+  ];
+  const tW = 230;
+  const x0 = W - M - tW;
+  if (ty + 90 > H - 60) {
+    doc.addPage();
+    ty = 50;
+  }
+  for (const [label, value, strong] of rows) {
+    if (strong) {
+      doc.setFillColor(...BLUE);
+      doc.roundedRect(x0, ty - 11, tW, 22, 4, 4, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      doc.text(label, x0 + 10, ty + 4);
+      doc.text(value, W - M - 10, ty + 4, { align: 'right' });
+      ty += 26;
+    } else {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(51, 65, 85);
+      doc.text(label, x0 + 10, ty);
+      doc.text(value, W - M - 10, ty, { align: 'right' });
+      ty += 15;
     }
-    doc.text(`${quote.number} · Página ${p} de ${pages}`, W - M, H - 24, { align: 'right' });
   }
 
+  // Notas e instrucciones
+  let ny = ty + 8;
+  const blocks: [string, string][] = [];
+  if (po.notes) blocks.push(['Notas', po.notes]);
+  blocks.push([
+    'Instrucciones',
+    [
+      `• Favor confirmar la recepción de esta orden y la fecha de entrega.`,
+      `• Facturar a nombre de ${settings.legal_name || settings.company_name}${settings.tax_id ? ` (NIT ${settings.tax_id}${settings.nrc ? `, NRC ${settings.nrc}` : ''})` : ''} e indicar el número ${po.number} en la factura.`,
+      `• No se aceptan cambios de producto, cantidad o precio sin autorización por escrito.`,
+    ].join('\n'),
+  ]);
+  for (const [title, text] of blocks) {
+    const lines = doc.splitTextToSize(text, W - 2 * M);
+    if (ny + 20 + lines.length * 11 > H - 120) {
+      doc.addPage();
+      ny = 50;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...NAVY);
+    doc.text(title, M, ny);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(lines, M, ny + 13);
+    ny += 22 + lines.length * 11;
+  }
+
+  // Firma
+  const sy = Math.max(ny + 30, H - 110);
+  doc.setDrawColor(148, 163, 184);
+  doc.line(M, sy, M + 190, sy);
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GRAY);
+  doc.text(['Autorizado por', settings.company_name], M, sy + 12);
+
+  drawDocFooter(doc, settings, 'Orden de compra emitida por Printer Business Hub.', po.number);
   return doc;
 }

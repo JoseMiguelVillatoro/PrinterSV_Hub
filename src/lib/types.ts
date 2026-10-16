@@ -135,6 +135,8 @@ export interface Supplier {
   contact_name: string | null;
   email: string | null;
   phone: string | null;
+  tax_id: string | null;
+  address: string | null;
   notes: string | null;
   is_active: boolean;
   is_demo: boolean;
@@ -319,6 +321,14 @@ export interface PurchaseOrder {
   expected_at: string | null;
   received_at: string | null;
   total_cost: number;
+  tax_rate: number;
+  tax_total: number;
+  grand_total: number;
+  payment_terms: string | null;
+  delivery_address: string | null;
+  sent_at: string | null;
+  created_at: string;
+  created_by: string | null;
   notes: string | null;
   is_demo: boolean;
   suppliers?: { name: string } | null;

@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { ArrowLeft, Check, PackageCheck, Plus, ShoppingCart, Truck, Wrench } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, PackageCheck, Plus, ShoppingCart, Truck, Wrench } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge, Button, Card, DemoBadge, ErrorBox, Field, Input, Modal, Select, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
-import { profileName, useProfiles, useSuppliers } from '@/hooks/data';
+import { PAYMENT_TERMS, PO_STATUS_TONE, PurchaseOrderDetailModal } from '@/components/PurchaseOrderModals';
+import { profileName, useProfiles, useSettings, useSuppliers } from '@/hooks/data';
 import { useToast } from '@/hooks/toast';
 import { useAuth } from '@/lib/auth';
 import {
@@ -19,10 +20,9 @@ import {
   money,
   num,
   stageTone,
-  todayISO,
 } from '@/lib/format';
 import { supabase, unwrap } from '@/lib/supabase';
-import type { OrderEvent, OrderItem, OrderView, PoStatus, ProductCost, PurchaseOrder, PurchaseOrderItem } from '@/lib/types';
+import type { OrderEvent, OrderItem, OrderView, ProductCost, PurchaseOrder, PurchaseOrderItem } from '@/lib/types';
 
 type Stage = 'compra' | 'recepcion' | 'preparacion' | 'entrega' | 'estado';
 
@@ -93,11 +93,11 @@ export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const auth = useAuth();
-  const toast = useToast();
   const qc = useQueryClient();
   const { data: profiles } = useProfiles();
   const [pending, setPending] = useState<{ stage: Stage; value: string } | null>(null);
   const [poModal, setPoModal] = useState(false);
+  const [openPo, setOpenPo] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['order', id],
@@ -118,25 +118,6 @@ export function OrderDetailPage() {
     void qc.invalidateQueries({ queryKey: ['dashboard'] });
     void qc.invalidateQueries({ queryKey: ['client'] });
   };
-
-  const updatePo = useMutation({
-    mutationFn: ({ po, status }: { po: PurchaseOrder; status: PoStatus }) =>
-      unwrap(
-        supabase
-          .from('purchase_orders')
-          .update({
-            status,
-            ordered_at: status === 'enviada' && !po.ordered_at ? todayISO() : po.ordered_at,
-            received_at: status === 'recibida' ? todayISO() : po.received_at,
-          })
-          .eq('id', po.id),
-      ),
-    onSuccess: () => {
-      toast.success('Orden de compra actualizada');
-      invalidate();
-    },
-    onError: toast.error,
-  });
 
   if (isLoading) return <Spinner />;
   if (error || !data) return <ErrorBox error={error ?? 'Pedido no encontrado'} />;
@@ -289,29 +270,30 @@ export function OrderDetailPage() {
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {pos.map((po) => (
-                    <li key={po.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-medium">
-                          {po.number} · {po.suppliers?.name}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Costo {money(po.total_cost)} · Pedida {dateOnly(po.ordered_at)} · Esperada {dateOnly(po.expected_at)}
-                          {po.received_at && ` · Recibida ${dateOnly(po.received_at)}`}
-                        </p>
-                      </div>
-                      <Select className="h-9 w-48" value={po.status} onChange={(e) => updatePo.mutate({ po, status: e.target.value as PoStatus })}>
-                        {Object.entries(PO_STATUS_LABEL).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </Select>
+                    <li key={po.id}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenPo(po.id)}
+                        className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-slate-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                            {po.number} · {po.suppliers?.name}
+                            <Badge tone={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Total {money(po.grand_total ?? po.total_cost)} · Pedida {dateOnly(po.ordered_at)} · Esperada {dateOnly(po.expected_at)}
+                            {po.received_at && ` · Recibida ${dateOnly(po.received_at)}`}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                      </button>
                     </li>
                   ))}
                 </ul>
               )}
               <p className="mt-3 text-xs text-slate-500">
-                Las OC documentan la compra; las etapas de arriba (compra / recepción del pedido) se actualizan aparte para que quede registrado quién y cuándo.
+                Abrí una OC para descargar el PDF, enviarla al proveedor o registrar lo recibido. Las etapas de arriba (compra / recepción del pedido) se actualizan aparte para que quede registrado quién y cuándo.
               </p>
             </Card>
           )}
@@ -370,7 +352,19 @@ export function OrderDetailPage() {
       </div>
 
       <StageModal pending={pending} order={o} onClose={() => setPending(null)} onDone={invalidate} />
-      {auth.canSeeCosts && <PurchaseOrderModal open={poModal} onClose={() => setPoModal(false)} orderId={o.id} items={items} onDone={invalidate} />}
+      {auth.canSeeCosts && (
+        <PurchaseOrderModal
+          open={poModal}
+          onClose={() => setPoModal(false)}
+          orderId={o.id}
+          items={items}
+          onDone={(id) => {
+            invalidate();
+            setOpenPo(id);
+          }}
+        />
+      )}
+      {auth.canSeeCosts && <PurchaseOrderDetailModal poId={openPo} orderNumber={o.number} onClose={() => setOpenPo(null)} onChanged={invalidate} />}
     </>
   );
 }
@@ -494,13 +488,22 @@ function OrderInfoEditor({ order, onDone }: { order: OrderView; onDone: () => vo
   );
 }
 
-function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: boolean; onClose: () => void; orderId: string; items: OrderItem[]; onDone: () => void }) {
+function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: boolean; onClose: () => void; orderId: string; items: OrderItem[]; onDone: (poId: string) => void }) {
   const toast = useToast();
   const { data: suppliers } = useSuppliers();
   const costs = useQuery({ queryKey: ['product_costs'], queryFn: () => unwrap(supabase.from('product_costs').select('*')) as Promise<ProductCost[]> });
   const [supplier, setSupplier] = useState('');
   const [expected, setExpected] = useState('');
   const [notes, setNotes] = useState('');
+  const { data: settings } = useSettings();
+  const [terms, setTerms] = useState('Contado');
+  const [taxRate, setTaxRate] = useState(13);
+  const [delivery, setDelivery] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setTaxRate(Number(settings?.default_tax_rate ?? 13));
+    setDelivery(settings?.address ?? '');
+  }, [open, settings]);
   const [lines, setLines] = useState<(Pick<PurchaseOrderItem, 'description' | 'quantity' | 'unit_cost'> & { order_item_id: string; include: boolean })[]>([]);
 
   useEffect(() => {
@@ -530,18 +533,32 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
       const chosen = lines.filter((l) => l.include);
       if (!chosen.length) throw new Error('Incluí al menos una línea.');
       const po = (await unwrap(
-        supabase.from('purchase_orders').insert({ number: '', order_id: orderId, supplier_id: supplier, expected_at: expected || null, notes: notes || null }).select('id').single(),
+        supabase
+          .from('purchase_orders')
+          .insert({
+            number: '',
+            order_id: orderId,
+            supplier_id: supplier,
+            expected_at: expected || null,
+            notes: notes || null,
+            payment_terms: terms.trim() || null,
+            tax_rate: taxRate,
+            delivery_address: delivery.trim() || null,
+          })
+          .select('id')
+          .single(),
       )) as { id: string };
       await unwrap(
         supabase.from('purchase_order_items').insert(
           chosen.map((l) => ({ purchase_order_id: po.id, order_item_id: l.order_item_id, description: l.description, quantity: l.quantity, unit_cost: l.unit_cost })),
         ),
       );
+      return po.id;
     },
-    onSuccess: () => {
-      toast.success('Orden de compra registrada (borrador)');
-      onDone();
+    onSuccess: (id) => {
+      toast.success('Orden de compra creada (borrador)');
       onClose();
+      onDone(id);
     },
     onError: toast.error,
   });
@@ -558,7 +575,7 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
             Cancelar
           </Button>
           <Button loading={m.isPending} onClick={() => m.mutate()}>
-            Registrar OC
+            Crear OC
           </Button>
         </>
       }
@@ -578,6 +595,20 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
           <Field label="Fecha esperada">
             <Input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
           </Field>
+          <Field label="Condiciones de pago">
+            <Input list="po-terms" value={terms} onChange={(e) => setTerms(e.target.value)} />
+            <datalist id="po-terms">
+              {PAYMENT_TERMS.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="IVA (%)" hint="Poné 0 si el proveedor no cobra IVA.">
+            <Input type="number" min={0} max={100} step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} />
+          </Field>
+          <Field label="Dirección de entrega" className="sm:col-span-2">
+            <Input value={delivery} onChange={(e) => setDelivery(e.target.value)} placeholder="Dirección de Printer o del cliente" />
+          </Field>
         </div>
         <div className="space-y-2">
           {lines.map((l, i) => (
@@ -588,9 +619,15 @@ function PurchaseOrderModal({ open, onClose, orderId, items, onDone }: { open: b
               <Input type="number" min={0} step="0.01" value={l.unit_cost} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, unit_cost: Number(e.target.value) } : x)))} />
             </div>
           ))}
-          <p className="text-right text-sm font-medium">
-            Costo total: {money(lines.filter((l) => l.include).reduce((a, l) => a + l.quantity * l.unit_cost, 0))}
-          </p>
+          {(() => {
+            const sub = lines.filter((l) => l.include).reduce((a, l) => a + Math.round(l.quantity * l.unit_cost * 100) / 100, 0);
+            const iva = Math.round(sub * taxRate) / 100;
+            return (
+              <p className="text-right text-sm">
+                Subtotal {money(sub)} · IVA {money(iva)} · <b>Total {money(sub + iva)}</b>
+              </p>
+            );
+          })()}
         </div>
         <Field label="Notas">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />

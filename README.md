@@ -61,6 +61,11 @@ Cada cotización tiene "Incluir fotos de los productos en el PDF" (por defecto s
 La migración `…0011_client_location.sql` agrega `latitude`/`longitude` a clientes. El mapa usa Leaflet + OpenStreetMap
 (sin API key) y la búsqueda de direcciones usa Nominatim (OSM); el detalle enlaza a Google Maps, "Cómo llegar" y Waze.
 
+### 2e. Órdenes de compra (PDF y correo al proveedor)
+La migración `…0014_purchase_order_docs.sql` agrega IVA, condiciones de pago, dirección de entrega y recepción por línea
+(`receive_purchase_order`). El PDF usa el mismo diseño que las cotizaciones. Para enviarlas por correo, publicar la función
+`send-purchase-order` (usa los mismos secretos de Resend que `send-quote-email`).
+
 ### 3. Frontend
 ```bash
 cp .env.example .env      # URL y anon key de Supabase → Project Settings → API
@@ -123,7 +128,7 @@ PGHOST=... PGUSER=postgres npm run test:db   # migraciones + RLS + flujo en un P
 ## Estructura
 ```
 supabase/migrations/   esquema, lógica, RLS, reportes, seed demo, save_quote, borrado de demo
-supabase/functions/    invite-user (invitaciones, solo admin) · send-quote-email (cotización por correo con Resend)
+supabase/functions/    invite-user (invitaciones, solo admin) · send-quote-email (cotización por correo) · send-purchase-order (OC al proveedor)
 supabase/tests/        pruebas SQL
 src/lib/               cliente Supabase, auth/roles, cálculo, PDF, CSV, formatos
 src/components/        layout, UI y formularios
