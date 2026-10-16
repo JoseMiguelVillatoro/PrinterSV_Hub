@@ -23,7 +23,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Button, Card, Checkbox, ErrorBox, Spinner } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { QUOTE_STATUS_LABEL, addDaysISO, dateTime, money, num, todayISO } from '@/lib/format';
+import { QUOTE_STATUS_LABEL, addDaysISO, dateTime, money, moneyShort, num, todayISO } from '@/lib/format';
 import { ORDER_STAGES, orderStage } from '@/lib/orderStage';
 import { supabase, unwrap } from '@/lib/supabase';
 import type { DashboardMetrics, OrderView, QuoteStatus } from '@/lib/types';
@@ -52,15 +52,20 @@ const TINT: Record<Tint, string> = {
   indigo: 'bg-indigo-50 text-indigo-600',
 };
 
-function Stat({ icon, tint, label, value, sub, subTone = 'slate', to }: { icon: ReactNode; tint: Tint; label: string; value: ReactNode; sub?: ReactNode; subTone?: 'slate' | 'green' | 'red'; to?: string }) {
+function Stat({ icon, tint, label, value, sub, subTone = 'slate', to, title }: { icon: ReactNode; tint: Tint; label: string; value: string; sub?: ReactNode; subTone?: 'slate' | 'green' | 'red'; to?: string; title?: string }) {
+  // El ícono va junto al título: así el número usa todo el ancho de la tarjeta.
+  // Y si aun así es largo, la letra se achica sola para no salirse.
+  const size = value.length > 11 ? 'text-lg' : value.length > 8 ? 'text-xl' : 'text-2xl';
   const body = (
-    <div className="flex h-full items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-200 hover:shadow">
-      <span className={clsx('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', TINT[tint])}>{icon}</span>
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-500">{label}</p>
-        <p className="mt-0.5 text-xl font-bold tracking-tight text-navy-900">{value}</p>
-        {sub && <p className={clsx('mt-0.5 text-xs', subTone === 'green' ? 'text-emerald-600' : subTone === 'red' ? 'text-red-600' : 'text-slate-500')}>{sub}</p>}
+    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-200 hover:shadow">
+      <div className="flex items-center gap-2">
+        <span className={clsx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&>svg]:h-4 [&>svg]:w-4', TINT[tint])}>{icon}</span>
+        <p className="min-w-0 text-xs font-medium leading-tight text-slate-500">{label}</p>
       </div>
+      <p className={clsx('mt-2 truncate font-bold tabular-nums tracking-tight text-navy-900', size)} title={title ?? value}>
+        {value}
+      </p>
+      {sub && <p className={clsx('mt-0.5 text-xs', subTone === 'green' ? 'text-emerald-600' : subTone === 'red' ? 'text-red-600' : 'text-slate-500')}>{sub}</p>}
     </div>
   );
   return to ? <Link to={to}>{body}</Link> : body;
@@ -282,11 +287,11 @@ export function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:grid-cols-7">
             <Stat to="/clientes" icon={<Users className="h-5 w-5" />} tint="blue" label="Clientes" value={num(m.clients.total)} sub={`+${m.clients.new_in_range} en el periodo · ${m.clients.prospects} prospectos`} subTone={m.clients.new_in_range > 0 ? 'green' : 'slate'} />
             <Stat to="/agenda" icon={<CalendarCheck className="h-5 w-5" />} tint="green" label="Visitas" value={num(m.visits.done_in_range)} sub={`${m.visits.upcoming_7d} próximas 7 días`} />
-            <Stat to="/cotizaciones" icon={<FileText className="h-5 w-5" />} tint="indigo" label="Cotizaciones" value={money(m.quotes.amount_in_range)} sub={`${m.quotes.count_in_range} emitidas en el periodo`} />
+            <Stat to="/cotizaciones" icon={<FileText className="h-5 w-5" />} tint="indigo" label="Cotizaciones" value={moneyShort(m.quotes.amount_in_range)} title={money(m.quotes.amount_in_range)} sub={`${m.quotes.count_in_range} emitidas en el periodo`} />
             <Stat to="/cotizaciones?estado=aceptada" icon={<CheckCircle2 className="h-5 w-5" />} tint="emerald" label="Aceptadas" value={num(s.accepted.n)} sub={m.quotes.conversion_rate === null ? 'Sin decisiones aún' : `${num(m.quotes.conversion_rate, 1)} % conversión`} subTone="green" />
-            <Stat icon={<Clock className="h-5 w-5" />} tint="amber" label="Pendientes" value={num(s.pending.n)} sub={money(s.pending.amount)} to="/cotizaciones?estado=enviada" />
-            <Stat icon={<XCircle className="h-5 w-5" />} tint="red" label="Rechazadas / vencidas" value={num(s.lost.n)} sub={money(s.lost.amount)} to="/reportes" />
-            <Stat to="/pedidos" icon={<ShoppingCart className="h-5 w-5" />} tint="violet" label="Pedidos" value={num(m.orders.created_in_range)} sub={money(m.orders.amount_in_range)} subTone="green" />
+            <Stat icon={<Clock className="h-5 w-5" />} tint="amber" label="Pendientes" value={num(s.pending.n)} sub={moneyShort(s.pending.amount)} to="/cotizaciones?estado=enviada" />
+            <Stat icon={<XCircle className="h-5 w-5" />} tint="red" label="Rechazadas / vencidas" value={num(s.lost.n)} sub={moneyShort(s.lost.amount)} to="/reportes" />
+            <Stat to="/pedidos" icon={<ShoppingCart className="h-5 w-5" />} tint="violet" label="Pedidos" value={num(m.orders.created_in_range)} sub={moneyShort(m.orders.amount_in_range)} subTone="green" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.35fr_1fr_1.15fr] [&>*]:min-w-0">

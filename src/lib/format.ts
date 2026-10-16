@@ -21,6 +21,18 @@ export function money(value: number | null | undefined, currency = 'USD'): strin
   );
 }
 
+/**
+ * Monto corto para tarjetas KPI: sin centavos desde $10,000 y en millones desde $1,000,000.
+ * (El valor exacto se muestra al pasar el cursor.)
+ */
+export function moneyShort(value: number | null | undefined): string {
+  const n = Number(value ?? 0);
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${n < 0 ? '-' : ''}$${(abs / 1_000_000).toLocaleString('es-SV', { maximumFractionDigits: 2 })} M`;
+  if (abs >= 10_000) return new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  return money(n);
+}
+
 export function num(value: number | null | undefined, digits = 0): string {
   return new Intl.NumberFormat('es-SV', { maximumFractionDigits: digits }).format(Number(value ?? 0));
 }
